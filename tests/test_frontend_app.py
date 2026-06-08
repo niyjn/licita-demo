@@ -31,7 +31,7 @@ def test_healthz_retorna_ok():
 
 
 def test_post_analises_cria_run_e_status_done_no_sqlite(tmp_path):
-    def fake_analysis(area, data_inicial, data_final, uf, limite, db_path, progress=None):
+    def fake_analysis(area, data_inicial, data_final, uf, limite, db_path, run_id=None, progress=None):
         progress({"mensagem": "metade", "atual": 1, "total": 2})
 
     app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db", "ANALYSIS_FUNC": fake_analysis})
@@ -47,7 +47,7 @@ def test_post_analises_cria_run_e_status_done_no_sqlite(tmp_path):
 
 
 def test_post_analises_grava_error_quando_thread_falha(tmp_path):
-    def fake_analysis(area, data_inicial, data_final, uf, limite, db_path, progress=None):
+    def fake_analysis(area, data_inicial, data_final, uf, limite, db_path, run_id=None, progress=None):
         raise RuntimeError("falha controlada")
 
     app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db", "ANALYSIS_FUNC": fake_analysis})

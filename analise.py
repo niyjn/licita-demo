@@ -1,8 +1,9 @@
+import unicodedata
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
 from pncp_query.config import AREAS, DB_PATH, PDF_DIR
-from pncp_query.services.candidate_filter import CandidateFilter, cnpj_valido
+from pncp_query.services.candidate_filter import cnpj_valido
 from pncp_query.services.common import somente_digitos
 from pncp_query.services.downloader_service import DownloaderService
 from pncp_query.services.enrichment_service import EnrichmentService
@@ -11,8 +12,22 @@ from pncp_query.services.pncp_search_service import PNCPSearchService
 from pncp_query.services.resultado_service import ResultadoService
 from pncp_query.services.storage import Storage
 
+DESCARTE_DIRETO_TERMOS = (
+    "dispensa",
+    "inexigibilidade",
+    "contratacao direta",
+    "fornecedor exclusivo",
+    "exclusividade",
+    "notoria especializacao",
+    "inviabilidade de competicao",
+)
 
-def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, progress=None):
+
+def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id=None, progress=None):
+    if callable(run_id) and progress is None:
+        progress = run_id
+        run_id = None
+
     if area not in AREAS:
         raise ValueError(f"Area desconhecida: {area}")
 
@@ -23,7 +38,6 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, progre
     parser = PDFParserService()
     resultados = ResultadoService()
     enrichment = EnrichmentService()
-    filtro = CandidateFilter()
 
     _emit(progress, "busca", f"Buscando compras em {uf} para {area}.")
     compras = _buscar_compras(search, area, data_inicial, data_final, uf, limite, progress)
@@ -49,7 +63,8 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, progre
             _emit(progress, "erro", mensagem, indice, total_compras)
             adjudicatarios = []
 
-        cnpjs_total = set()
+        atas_lidas = 0
+        cnpjs_origem = {}
         try:
             arquivos = downloader.listar_arquivos_relevantes(linha, PDF_DIR, chaves)
         except Exception as exc:
@@ -61,24 +76,36 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, progre
                 downloader.baixar(arquivo)
                 if arquivo.destino.exists():
                     resultado_pdf = parser.extrair_resultado(arquivo.destino)
-                    cnpjs_total.update(resultado_pdf.cnpjs_total)
+                    atas_lidas += 1
+                    for cnpj in resultado_pdf.cnpjs_total:
+                        cnpj_normalizado = somente_digitos(cnpj)
+                        if cnpj_normalizado:
+                            cnpjs_origem.setdefault(cnpj_normalizado, set()).add(arquivo.destino.name)
             except Exception as exc:
                 _emit(progress, "erro", f"Falha ao processar {arquivo.titulo}: {exc}.", indice, total_compras)
 
-        participantes = _montar_participantes(
+        auditoria = _montar_auditoria(
             adjudicatarios,
-            cnpjs_total,
+            set(cnpjs_origem),
             linha.get("orgao_cnpj"),
             enrichment,
-            filtro,
+            cnpjs_origem,
+            atas_lidas,
         )
         contrato = _montar_contrato(linha, chaves)
-        storage.salvar_contrato(contrato, participantes)
+        contrato["run_id"] = run_id
+        contrato["status"], contrato["motivo_status"] = _status_contrato(linha, auditoria)
+        contrato_id = storage.salvar_contrato(contrato, auditoria["participantes"])
+        if run_id:
+            storage.salvar_cnpjs_auditoria(contrato_id, run_id, auditoria["registros"])
+            storage.salvar_metricas_funil(contrato_id, run_id, auditoria["metricas"])
 
         contratos_salvos += 1
-        participantes_salvos += len(participantes)
+        participantes_salvos += len(auditoria["participantes"])
 
     resumo = {"contratos": contratos_salvos, "participantes": participantes_salvos}
+    if run_id:
+        resumo.update(storage.somar_metricas_run(run_id))
     _emit(progress, "concluido", "Analise concluida.", total_compras, total_compras)
     return resumo
 
@@ -105,15 +132,17 @@ def _buscar_compras(search, area, data_inicial, data_final, uf, limite, progress
     return compras
 
 
-def _montar_participantes(adjudicatarios, cnpjs_total, orgao_cnpj, enrichment, filtro):
+def _montar_auditoria(adjudicatarios, cnpjs_ata, orgao_cnpj, enrichment, cnpjs_origem=None, atas_lidas=0):
     participantes = []
-    cnpjs_adjudicatarios = set()
+    registros = []
+    cnpjs_vencedores = set()
+    cnpjs_origem = cnpjs_origem or {}
 
     for item in adjudicatarios:
         cnpj = somente_digitos(item.get("cnpj"))
-        if not cnpj or not cnpj_valido(cnpj):
+        if not cnpj:
             continue
-        cnpjs_adjudicatarios.add(cnpj)
+        cnpjs_vencedores.add(cnpj)
         participantes.append(
             {
                 "cnpj": cnpj,
@@ -122,21 +151,105 @@ def _montar_participantes(adjudicatarios, cnpjs_total, orgao_cnpj, enrichment, f
                 "valor_homologado": item.get("valor_homologado"),
             }
         )
+        registros.append(
+            {
+                "cnpj": cnpj,
+                "nome": item.get("nome", ""),
+                "source": "estruturada",
+                "disposition": "vencedor",
+                "reason": "resultado_pncp_estruturado",
+            }
+        )
 
-    for cnpj_bruto in sorted(cnpjs_total):
-        decisao = filtro.evaluate(cnpj_bruto, buyer_org_cnpj=orgao_cnpj, source_org_cnpj=orgao_cnpj)
-        if not decisao.accepted or decisao.cnpj in cnpjs_adjudicatarios:
-            continue
+    cnpjs_ata_unicos = {somente_digitos(cnpj) for cnpj in cnpjs_ata if somente_digitos(cnpj)}
+    restantes = set(cnpjs_ata_unicos)
+    removido_invalido = {cnpj for cnpj in restantes if not cnpj_valido(cnpj)}
+    restantes -= removido_invalido
+
+    comprador = somente_digitos(orgao_cnpj)
+    removido_orgao = {cnpj for cnpj in restantes if comprador and cnpj == comprador}
+    restantes -= removido_orgao
+
+    removido_vencedor = restantes & cnpjs_vencedores
+    restantes -= removido_vencedor
+    perdedores_final = restantes
+
+    assert len(cnpjs_ata_unicos) == (
+        len(removido_invalido) + len(removido_orgao) + len(removido_vencedor) + len(perdedores_final)
+    )
+
+    for disposition, cnpjs, reason in (
+        ("removido_invalido", removido_invalido, "digito_verificador_invalido"),
+        ("removido_orgao", removido_orgao, "orgao_comprador"),
+        ("removido_vencedor", removido_vencedor, "coincidente_com_vencedor"),
+    ):
+        for cnpj in sorted(cnpjs):
+            registros.append(_registro_ata(cnpj, disposition, reason, cnpjs_origem))
+
+    for cnpj in sorted(perdedores_final):
+        nome = enrichment.nome(cnpj)
         participantes.append(
             {
-                "cnpj": decisao.cnpj,
-                "nome": enrichment.nome(decisao.cnpj),
+                "cnpj": cnpj,
+                "nome": nome,
                 "papel": "participante",
                 "valor_homologado": None,
             }
         )
+        registro = _registro_ata(cnpj, "perdedor_final", "cnpj_valido_da_ata", cnpjs_origem)
+        registro["nome"] = nome
+        registros.append(registro)
 
-    return participantes
+    metricas = {
+        "atas_lidas": atas_lidas,
+        "cnpjs_ata_unicos": len(cnpjs_ata_unicos),
+        "removido_invalido": len(removido_invalido),
+        "removido_orgao": len(removido_orgao),
+        "removido_vencedor": len(removido_vencedor),
+        "perdedores_final": len(perdedores_final),
+        "vencedores": len(cnpjs_vencedores),
+        "resultado_final": len(perdedores_final) + len(cnpjs_vencedores),
+    }
+    return {"participantes": participantes, "registros": registros, "metricas": metricas}
+
+
+def _registro_ata(cnpj, disposition, reason, cnpjs_origem):
+    return {
+        "cnpj": cnpj,
+        "source": "ata",
+        "disposition": disposition,
+        "reason": reason,
+        "origin_file": ",".join(sorted(cnpjs_origem.get(cnpj, []))),
+    }
+
+
+def _status_contrato(linha, auditoria):
+    motivo_descarte = _motivo_descarte(linha)
+    if motivo_descarte:
+        return "descartado", motivo_descarte
+    if auditoria["metricas"]["vencedores"] == 0:
+        return "vazio", "sem_vencedor_estruturado"
+    if auditoria["metricas"]["perdedores_final"] == 0:
+        return "vazio", "sem_perdedores_na_ata"
+    return "final", ""
+
+
+def _motivo_descarte(linha):
+    texto = _normalizar(
+        " ".join(
+            str(linha.get(campo, ""))
+            for campo in ("modalidade_licitacao_nome", "title", "description", "situacao_nome")
+        )
+    )
+    for termo in DESCARTE_DIRETO_TERMOS:
+        if termo in texto:
+            return f"contratacao_direta_ou_exclusividade:{termo}"
+    return ""
+
+
+def _normalizar(valor):
+    sem_acento = unicodedata.normalize("NFKD", str(valor or "")).encode("ascii", "ignore").decode("ascii")
+    return " ".join(sem_acento.lower().split())
 
 
 def _montar_contrato(linha, chaves):

@@ -136,6 +136,7 @@ def _executar_analise_background(run_id, payload, db_path, analysis_func):
             payload["uf"],
             payload["limite"],
             db_path,
+            run_id=run_id,
             progress=progress,
         )
     except Exception as exc:

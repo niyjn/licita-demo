@@ -80,3 +80,48 @@ def test_analisar_persiste_adjudicatario_e_participantes(monkeypatch, tmp_path):
     assert [p["papel"] for p in participantes] == ["adjudicatario", "participante"]
     assert participantes[1]["nome"] == "Empresa B"
     assert any(evento["etapa"] == "concluido" for evento in eventos)
+
+
+def test_analisar_persiste_funil_auditavel_por_run(monkeypatch, tmp_path):
+    monkeypatch.setattr(analise, "PNCPSearchService", FakeSearch)
+    monkeypatch.setattr(analise, "DownloaderService", FakeDownloader)
+    monkeypatch.setattr(analise, "PDFParserService", FakeParser)
+    monkeypatch.setattr(analise, "ResultadoService", FakeResultado)
+    monkeypatch.setattr(analise, "EnrichmentService", FakeEnrichment)
+    monkeypatch.setattr(analise, "PDF_DIR", tmp_path / "pdfs")
+    storage = Storage(tmp_path / "analise.db")
+    storage.criar_run("run-1")
+
+    resumo = analise.analisar("TI", "2026-03-01", "2026-06-01", "SP", 10, tmp_path / "analise.db", run_id="run-1")
+
+    auditoria = storage.listar_cnpjs_auditoria("run-1")
+    disposicoes = {(registro["cnpj"], registro["disposition"]) for registro in auditoria}
+    metricas = storage.somar_metricas_run("run-1")
+
+    assert ("11222333000181", "vencedor") in disposicoes
+    assert ("11222333000181", "removido_vencedor") in disposicoes
+    assert ("11444777000161", "perdedor_final") in disposicoes
+    assert ("12345678000195", "removido_orgao") in disposicoes
+    assert metricas["cnpjs_ata_unicos"] == 3
+    assert metricas["removido_orgao"] == 1
+    assert metricas["removido_vencedor"] == 1
+    assert metricas["perdedores_final"] == 1
+    assert metricas["vencedores"] == 1
+    assert metricas["resultado_final"] == 2
+    assert resumo["resultado_final"] == 2
+
+
+def test_funil_remove_no_primeiro_balde_quando_ha_sobreposicao():
+    auditoria = analise._montar_auditoria(
+        adjudicatarios=[],
+        cnpjs_ata={"00.000.000/0000-00"},
+        orgao_cnpj="00.000.000/0000-00",
+        enrichment=FakeEnrichment(),
+        cnpjs_origem={"00000000000000": {"ata.pdf"}},
+        atas_lidas=1,
+    )
+
+    assert auditoria["metricas"]["cnpjs_ata_unicos"] == 1
+    assert auditoria["metricas"]["removido_invalido"] == 1
+    assert auditoria["metricas"]["removido_orgao"] == 0
+    assert auditoria["registros"][0]["disposition"] == "removido_invalido"
