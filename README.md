@@ -1,9 +1,51 @@
-# Analise PNCP
+# Análise PNCP
 
-Aplicacao Python para analisar atas de licitacao do PNCP. A interface web e
-server-rendered com Flask/Jinja2 e usa o CSS em `design-system/`.
+Aplicação web que analisa contratações públicas do [PNCP](https://pncp.gov.br)
+(Portal Nacional de Contratações Públicas). Você escolhe **área**, **período** e
+**UF**, e a aplicação monta, por contrato, **quem venceu e quem participou** — com
+CNPJ e nome — junto de um **relatório de qualidade reconciliável** dos dados extraídos.
 
-## Uso local
+> Projeto de demonstração sobre dados abertos. As listas de palavras-chave em
+> `pncp_query/config.py` são exemplos ilustrativos — ajuste-as para o nicho que quiser.
+
+## O que faz
+
+1. **Busca** compras no PNCP por palavras-chave da área, período e UF (filtro `ufs` na API).
+2. **Vencedores** vêm da API estruturada de resultados do PNCP (CNPJ, razão social e valor homologado) — sem depender de PDF.
+3. **Demais participantes** são extraídos do texto das **atas em PDF** (parsing nativo + fallback de OCR), validados e enriquecidos com a razão social via [BrasilAPI](https://brasilapi.com.br).
+4. **Persiste** tudo em SQLite e exibe numa interface server-rendered (Flask + Jinja2).
+
+As áreas de exemplo disponíveis são `TI`, `ENGENHARIA` e `SAUDE`, e o filtro cobre as 27 UFs.
+
+## Relatório de qualidade (o diferencial)
+
+Em vez de cuspir uma lista, a aplicação mostra um funil **reconciliável** por execução,
+em que cada número é rastreável e a aritmética fecha:
+
+```
+CNPJs únicos extraídos das atas ...... X
+  − dígito verificador inválido ...... a
+  − órgão comprador .................. b
+  − coincidente com o vencedor ....... c
+= Participantes no resultado final ... Y     (X = a + b + c + Y, por construção)
+
+Vencedores (fonte estruturada PNCP) .. Z     (não passam pela limpeza)
+Resultado final = Y + Z
+```
+
+Cada número é clicável e lista os CNPJs daquele estágio, com a fonte (`estruturada` ou `ata`)
+e o motivo da remoção. Vencedores nunca entram em `X`, porque vêm de fonte diferente dos PDFs.
+
+## Arquitetura
+
+- **Flask + Jinja2** — frontend server-rendered, estilizado pelo CSS em `design-system/`.
+- **Execução assíncrona** — `POST /analises` cria uma run, dispara a análise numa thread e retorna `run_id`; o front faz polling em `GET /analises/<run_id>/status`. O status vive no SQLite (não em memória), então funciona com múltiplos workers.
+- **SQLite** (WAL + `busy_timeout`) — sem servidor de banco; roda inteiro em um container.
+- **Serviços** — busca PNCP, resultado estruturado, downloader de atas (download atômico), parser PDF/OCR, validação de CNPJ e enriquecimento por BrasilAPI.
+
+## Rodando
+
+### Local
 
 ```bash
 pip install -r requirements.txt
@@ -11,23 +53,28 @@ pip install -r requirements-dev.txt
 flask --app app run --host 0.0.0.0 --port 8000
 ```
 
-Para OCR de PDFs escaneados, instale Tesseract e Poppler no sistema.
+Para OCR de PDFs escaneados, instale o [Tesseract](https://github.com/tesseract-ocr/tesseract) e o [Poppler](https://poppler.freedesktop.org/).
+
+### Docker (container único)
+
+```bash
+docker build -t licita-demo .
+docker run --rm -p 8000:8000 licita-demo
+# http://localhost:8000
+```
 
 ## Testes e lint
 
 ```bash
 python -m pytest
-python -m ruff check .
+ruff check .
 ```
 
-## Docker
+## Ressalvas honestas
 
-```bash
-docker build -t licita-demo .
-docker run --rm -p 8000:8000 licita-demo
-```
+- **"Participantes" são inferidos das atas**, a partir dos CNPJs válidos encontrados no PDF após limpeza — não é uma classificação oficial do PNCP. Contratos sem ata ou sem participantes legíveis ficam fora do resultado principal (acessíveis por toggle).
+- **O nome do participante é best-effort**: vem da BrasilAPI, que tem rate limit. Sob carga, alguns participantes aparecem só com o CNPJ. O vencedor sempre tem nome (fonte estruturada).
 
 ## Stack
 
-Python 3.11, Flask, Jinja2, SQLite, requests, pandas, pdfplumber, pytesseract,
-pdf2image e python-dateutil.
+Python 3.11 · Flask · Jinja2 · SQLite · requests · pandas · pdfplumber · pytesseract · pdf2image · python-dateutil
