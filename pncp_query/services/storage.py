@@ -111,20 +111,25 @@ class Storage:
         with self.connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             if version < SCHEMA_VERSION:
-                self._recriar_schema(conn)
+                self._run_migrations(conn, version)
             conn.executescript(SCHEMA)
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
-    def _recriar_schema(self, conn):
-        conn.executescript(
-            """
-            DROP TABLE IF EXISTS metricas_funil;
-            DROP TABLE IF EXISTS cnpjs_auditoria;
-            DROP TABLE IF EXISTS participantes;
-            DROP TABLE IF EXISTS contratos;
-            DROP TABLE IF EXISTS runs;
-            """
-        )
+    def _run_migrations(self, conn, current_version):
+        if current_version == 0:
+            return  # Fresh DB, script handles it
+        
+        # Example incremental upgrades
+        if current_version < 3:
+            # Safely add situacao_cadastral columns if they don't exist
+            try:
+                conn.execute("ALTER TABLE participantes ADD COLUMN situacao_cadastral TEXT NOT NULL DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE cnpjs_auditoria ADD COLUMN situacao_cadastral TEXT NOT NULL DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
 
     def criar_run(self, run_id, params_json="{}"):
         now = _now()
