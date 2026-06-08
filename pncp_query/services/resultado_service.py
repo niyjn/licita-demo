@@ -46,10 +46,27 @@ class ResultadoService:
 
     def _listar_itens(self, orgao_cnpj, ano, sequencial):
         url = f"{BASE}/orgaos/{orgao_cnpj}/compras/{ano}/{sequencial}/itens"
-        dados = self._get_json(url, params={"pagina": 1, "tamanhoPagina": 100})
-        if isinstance(dados, list):
-            return dados
-        return dados.get("data") or dados.get("items") or []
+        itens = []
+        pagina = 1
+        tamanho_pagina = 100
+        while True:
+            dados = self._get_json(url, params={"pagina": pagina, "tamanhoPagina": tamanho_pagina})
+            if not dados:
+                break
+            
+            if isinstance(dados, list):
+                lista = dados
+            else:
+                lista = dados.get("data") or dados.get("items") or []
+            
+            if not lista:
+                break
+                
+            itens.extend(lista)
+            if len(lista) < tamanho_pagina:
+                break
+            pagina += 1
+        return itens
 
     def _resultados_item(self, orgao_cnpj, ano, sequencial, numero_item):
         url = f"{BASE}/orgaos/{orgao_cnpj}/compras/{ano}/{sequencial}/itens/{numero_item}/resultados"
