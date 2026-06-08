@@ -93,3 +93,30 @@ ruff check .
 ## Stack
 
 Python 3.11 · Flask · Jinja2 · SQLite · requests · pandas · pdfplumber · pytesseract · pdf2image · python-dateutil
+
+## Melhorias de Portfólio Implementadas
+
+O projeto passou por uma auditoria completa e recebeu as seguintes melhorias para garantir prontidão de portfólio técnico:
+
+1. **Segurança e Concorrência**:
+   - **XSS Mitigado**: Inserção dinâmica no modal sanitizada com função de escape HTML customizada e filtros de detecção de caracteres perigosos no JS.
+   - **Usuário Não-Root**: Configuração do `Dockerfile` alterada para rodar a aplicação sob o usuário seguro `appuser` (UID 1000).
+   - **Gunicorn Concorrente**: Ajuste para `--workers 2 --threads 4` no container Docker, evitando bloqueio do loop de eventos principal em requisições de polling.
+   - **Tratamento de Órfãs e Timeouts**: Recuperação automática de análises travadas no startup do Flask e mecanismo defensivo contra runs travadas no `finally`.
+
+2. **Estabilidade e Banco de Dados**:
+   - **Soma do Funil Robusta**: Remoção do `assert` no pipeline principal por validação via exceção explícita, garantindo execução mesmo com compilações python otimizadas (`-O`).
+   - **Migrações Não-Destrutivas**: Sistema de upgrade incremental usando `ALTER TABLE` no banco SQLite em substituição à recreação destrutiva (`DROP TABLE`).
+   - **Validação de Entrada**: Endpoint `/analises` agora valida o formato das datas (YYYY-MM-DD), intervalo temporal lógico, sigla de UFs e limites de registros (1-100), retornando 400 Bad Request em erros.
+   - **Paginação e Fallback no PNCP**: Implementado loop de paginação no `ResultadoService` para buscar mais de 100 itens adjudicados.
+   - **Correção da Situação Cadastral**: Campo `situacao_cadastral` recuperado do BrasilAPI agora é persistido corretamente em todos os registros de auditoria gerados das atas.
+
+3. **Frontend e Estilo Visual**:
+   - **Modularidade Visual**: Limpeza de estilos não-utilizados e implementação das classes de layout e UI que estavam ausentes (`.btn`, `.btn-primary`, `.btn-secondary`, `.blank-state`, `.pill.success`, `.eyebrow`, `.panel-header`, `.page-header`, `.table-card`).
+   - **Tipografia**: Carregamento forçado das fontes oficiais (Inter e Sora) a partir do Google Fonts direto no cabeçalho.
+   - **Responsividade**: Ajustada a largura mínima global de tabelas para `100%` (dentro de contêineres com scroll horizontal), evitando quebra do layout em resoluções mais baixas.
+   - **Limpeza**: Remoção de classes e arquivos de filtro mortos (`CandidateFilter`).
+
+4. **Testes Unitários**:
+   - Adicionada suíte de testes unitários para o parser de atas (`pdf_parser_service.py`) cobrindo detecção de vencedores, proximidade espacial e conversão.
+   - Adicionados testes para a heurística de descarte direto (`_motivo_descarte`) de dispensas e inexigibilidades.
