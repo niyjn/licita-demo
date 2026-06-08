@@ -38,11 +38,11 @@ def test_detectar_adjudicatarios_single_cnpj():
 def test_detectar_adjudicatarios_proximity():
     service = PDFParserService()
     
-    # Proximity matching when multiple CNPJs exist
+    # Proximity matching when multiple CNPJs exist:
+    # "Homologado" is near CNPJ 11.222.333/0001-81, while "Participante" is far.
     texto = (
-        "O vencedor homologado é a empresa A. "
-        "CNPJ participante: 22.333.444/0001-02. "
-        "Adjudicatário: 11.222.333/0001-81."
+        "Adjudicado e homologado para a empresa vencedora, CNPJ: 11.222.333/0001-81. "
+        "Outro participante sem lances válidos: 22.333.444/0001-02."
     )
     cnpjs = ["22.333.444/0001-02", "11.222.333/0001-81"]
     res = service._detectar_adjudicatarios(texto, cnpjs)
@@ -53,10 +53,10 @@ def test_detectar_adjudicatarios_proximity():
 def test_extrair_resultado_flow(mock_extract):
     service = PDFParserService()
     
-    # Mock text extraction return values
+    # Mock text extraction return values containing key indicator "homologado"
     mock_extract.return_value = (
         "Objeto: Aquisição de licenças de software e serviços de TI.\n"
-        "CNPJ Vencedor: 11.222.333/0001-81\n"
+        "Vencedor homologado: 11.222.333/0001-81\n"
         "CNPJ Participante: 22.333.444/0001-02",
         2
     )
