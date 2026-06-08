@@ -36,6 +36,12 @@ Resultado final = Y + Z
 Cada número é clicável e lista os CNPJs daquele estágio, com a fonte (`estruturada` ou `ata`)
 e o motivo da remoção. Vencedores nunca entram em `X`, porque vêm de fonte diferente dos PDFs.
 
+> [!NOTE]
+> **Heurística de Órgão Comprador Aprimorada:** O descarte do órgão comprador (filtro `b`) 
+> é realizado comparando apenas o **CNPJ Raiz (primeiros 8 dígitos)**. Isso garante que o órgão 
+> comprador seja devidamente identificado e excluído mesmo que a ata em PDF cite o CNPJ da matriz 
+> e a licitação no PNCP tenha sido cadastrada sob o CNPJ de uma de suas filiais/departamentos.
+
 ## Arquitetura
 
 - **Flask + Jinja2** — frontend server-rendered, estilizado pelo CSS em `design-system/`.

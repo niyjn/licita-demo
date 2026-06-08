@@ -175,8 +175,8 @@ def _montar_auditoria(adjudicatarios, cnpjs_ata, orgao_cnpj, enrichment, cnpjs_o
     removido_invalido = {cnpj for cnpj in restantes if not cnpj_valido(cnpj)}
     restantes -= removido_invalido
 
-    comprador = somente_digitos(orgao_cnpj)
-    removido_orgao = {cnpj for cnpj in restantes if comprador and cnpj == comprador}
+    comprador_raiz = somente_digitos(orgao_cnpj)[:8]
+    removido_orgao = {cnpj for cnpj in restantes if comprador_raiz and cnpj[:8] == comprador_raiz}
     restantes -= removido_orgao
 
     removido_vencedor = restantes & cnpjs_vencedores

@@ -134,3 +134,18 @@ def test_funil_remove_no_primeiro_balde_quando_ha_sobreposicao():
     assert auditoria["metricas"]["removido_invalido"] == 1
     assert auditoria["metricas"]["removido_orgao"] == 0
     assert auditoria["registros"][0]["disposition"] == "removido_invalido"
+
+
+def test_funil_remove_orgao_comprador_por_cnpj_raiz():
+    auditoria = analise._montar_auditoria(
+        adjudicatarios=[],
+        cnpjs_ata={"12.345.678/0001-95"},  # Matriz
+        orgao_cnpj="12.345.678/0002-10",  # Filial
+        enrichment=FakeEnrichment(),
+        cnpjs_origem={"12345678000195": {"ata.pdf"}},
+        atas_lidas=1,
+    )
+
+    assert auditoria["metricas"]["cnpjs_ata_unicos"] == 1
+    assert auditoria["metricas"]["removido_orgao"] == 1
+    assert auditoria["registros"][0]["disposition"] == "removido_orgao"
