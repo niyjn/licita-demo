@@ -381,6 +381,8 @@
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       
+      const formData = new FormData(form);
+      
       // Disable form inputs to prevent double submits
       submitBtn.disabled = true;
       form.querySelectorAll("input, select").forEach(el => el.disabled = true);
@@ -390,7 +392,7 @@
       progressContainer.style.display = "block";
       progressBar.style.width = "0%";
 
-      const response = await fetch("/analises", { method: "POST", body: new FormData(form) });
+      const response = await fetch("/analises", { method: "POST", body: formData });
       const payload = await response.json();
       const runId = payload.run_id;
       
