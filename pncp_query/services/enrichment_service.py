@@ -1,8 +1,8 @@
 """Enriquece um CNPJ com a razao social via BrasilAPI (publica, sem chave).
 
-Usada para obter o nome das empresas participantes (perdedoras) que aparecem
+Usada para obter o nome das empresas participantes que aparecem
 apenas como CNPJ no texto das atas. Fail-safe: se a API falhar ou houver
-rate limit, retorna nome vazio em vez de quebrar o pipeline.
+rate limit, retorna nome vazio em vez de quebrar a analise.
 """
 
 from pncp_query.services.common import somente_digitos

@@ -1,1 +1,1 @@
-"""Sistema de scraping PNCP para leads de licitacoes de TI."""
+"""Analise de atas do PNCP para contratos e participantes."""

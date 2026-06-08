@@ -11,7 +11,7 @@ class CandidateDecision:
     details: dict = field(default_factory=dict)
 
 
-class LeadCandidateFilter:
+class CandidateFilter:
     def evaluate(self, cnpj, buyer_org_cnpj=None, source_org_cnpj=None):
         normalized = somente_digitos(cnpj)
         if not normalized or len(normalized) != 14:

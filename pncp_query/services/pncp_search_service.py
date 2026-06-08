@@ -3,7 +3,7 @@ import time
 
 import requests
 
-from pncp_query.config import PALAVRAS_CHAVE_TI, SEARCH_PROFILES
+from pncp_query.config import AREAS, SEARCH_PROFILES
 from pncp_query.models import Licitacao
 from pncp_query.services.common import limpar_texto
 from pncp_query.services.http_client import HttpClient
@@ -18,11 +18,40 @@ class PNCPSearchService:
         self.session.headers.update({"accept": "application/json", "user-agent": "pncp-query/1.0"})
         self.http = HttpClient(self.session)
 
-    def buscar(self, data_inicial, data_final, limite_por_combinacao=0, pausa=1.0, logger=print):
-        return list(self.buscar_iter(data_inicial, data_final, limite_por_combinacao, pausa, logger))
+    def buscar(
+        self,
+        data_inicial,
+        data_final,
+        limite_por_combinacao=0,
+        pausa=1.0,
+        logger=print,
+        palavras_chave=None,
+        ufs=None,
+    ):
+        return list(
+            self.buscar_iter(
+                data_inicial,
+                data_final,
+                limite_por_combinacao,
+                pausa,
+                logger,
+                palavras_chave=palavras_chave,
+                ufs=ufs,
+            )
+        )
 
-    def buscar_iter(self, data_inicial, data_final, limite_por_combinacao=0, pausa=1.0, logger=print):
-        for palavra in PALAVRAS_CHAVE_TI:
+    def buscar_iter(
+        self,
+        data_inicial,
+        data_final,
+        limite_por_combinacao=0,
+        pausa=1.0,
+        logger=print,
+        palavras_chave=None,
+        ufs=None,
+    ):
+        termos = palavras_chave or AREAS["TI"]
+        for palavra in termos:
             for profile in SEARCH_PROFILES:
                 yield from self._buscar_combinacao(
                     palavra,
@@ -33,6 +62,7 @@ class PNCPSearchService:
                     limite_por_combinacao,
                     pausa,
                     logger,
+                    ufs,
                 )
 
     def _buscar_combinacao(
@@ -45,6 +75,7 @@ class PNCPSearchService:
         limite_por_combinacao,
         pausa,
         logger,
+        ufs=None,
     ):
         pagina = 1
         coletados = 0
@@ -61,6 +92,8 @@ class PNCPSearchService:
                 "tipos_documento": tipo_documento,
                 "status": status,
             }
+            if ufs:
+                params["ufs"] = ufs
             try:
                 response = self._get(self.base_url, params=params)
             except requests.exceptions.RequestException as exc:

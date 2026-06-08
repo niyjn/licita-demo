@@ -1,4 +1,4 @@
-from pncp_query.services.lead_candidate_filter import LeadCandidateFilter, cnpj_valido
+from pncp_query.services.candidate_filter import CandidateFilter, cnpj_valido
 
 
 def test_cnpj_valido_aceita_com_e_sem_mascara():
@@ -12,21 +12,21 @@ def test_cnpj_valido_rejeita_digito_invalido_e_repetido():
 
 
 def test_candidate_filter_rejeita_vazio_e_malformado():
-    filtro = LeadCandidateFilter()
+    filtro = CandidateFilter()
 
     assert filtro.evaluate("").reason == "empty_or_malformed"
     assert filtro.evaluate("123").reason == "empty_or_malformed"
 
 
 def test_candidate_filter_rejeita_orgao_comprador_e_orgao_fonte():
-    filtro = LeadCandidateFilter()
+    filtro = CandidateFilter()
 
     assert filtro.evaluate("11222333000181", buyer_org_cnpj="11.222.333/0001-81").reason == "buyer_org_cnpj"
     assert filtro.evaluate("11222333000181", source_org_cnpj="11.222.333/0001-81").reason == "source_org_cnpj"
 
 
 def test_candidate_filter_aceita_cnpj_normalizado():
-    decision = LeadCandidateFilter().evaluate("11.222.333/0001-81")
+    decision = CandidateFilter().evaluate("11.222.333/0001-81")
 
     assert decision.accepted
     assert decision.cnpj == "11222333000181"

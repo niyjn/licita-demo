@@ -107,7 +107,7 @@ class Storage:
                     dict(r)
                     for r in conn.execute(
                         "SELECT cnpj, nome, papel, valor_homologado FROM participantes "
-                        "WHERE contrato_id = ? ORDER BY papel DESC",
+                        "WHERE contrato_id = ? ORDER BY papel ASC, nome ASC",
                         (contrato["id"],),
                     ).fetchall()
                 ]

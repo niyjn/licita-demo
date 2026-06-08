@@ -8,7 +8,7 @@ from pathlib import Path
 from pncp_query.config import (
     OCR_DPI,
     OCR_MAX_PAGES,
-    PADROES_VENCEDOR,
+    PADROES_ADJUDICATARIO,
     PDF_TEXT_MAX_PAGES,
     PDF_TEXT_TIMEOUT_SECONDS,
 )
@@ -52,14 +52,14 @@ class PDFParserService:
         resultado.motivos_exclusao = qualificacao["exclusoes"]
 
         todos = sorted(set(CNPJ_RE.findall(texto)))
-        vencedores = sorted(set(self._detectar_vencedores(texto, todos, caminho_pdf.name)))
-        derrotados = []
+        adjudicatarios = sorted(set(self._detectar_adjudicatarios(texto, todos, caminho_pdf.name)))
+        participantes = []
         if resultado.qualificado_ti:
-            derrotados = sorted(set(cnpj for cnpj in todos if cnpj not in vencedores))
+            participantes = sorted(set(cnpj for cnpj in todos if cnpj not in adjudicatarios))
 
         resultado.cnpjs_total = todos
-        resultado.cnpjs_vencedores = vencedores
-        resultado.cnpjs_derrotados = derrotados
+        resultado.cnpjs_adjudicatarios = adjudicatarios
+        resultado.cnpjs_participantes = participantes
         resultado.parse_duration_ms = int((time.perf_counter() - inicio) * 1000)
         return resultado
 
@@ -161,24 +161,25 @@ class PDFParserService:
                         close()
         return "\n".join(texto)
 
-    def _detectar_vencedores(self, texto, cnpjs, nome_arquivo=""):
+    def _detectar_adjudicatarios(self, texto, cnpjs, nome_arquivo=""):
         contexto_normalizado = self._normalizar(f"{nome_arquivo}\n{texto}")
         texto_lower = texto.lower()
-        vencedores = set()
+        adjudicatarios = set()
 
-        if len(cnpjs) == 1 and any(self._normalizar(padrao) in contexto_normalizado for padrao in PADROES_VENCEDOR):
-            vencedores.add(cnpjs[0])
+        tem_indicador = any(self._normalizar(padrao) in contexto_normalizado for padrao in PADROES_ADJUDICATARIO)
+        if len(cnpjs) == 1 and tem_indicador:
+            adjudicatarios.add(cnpjs[0])
 
-        vencedores.update(self._detectar_primeiro_colocado(texto))
+        adjudicatarios.update(self._detectar_primeiro_colocado(texto))
 
         for match in CNPJ_CONTEXT_RE.finditer(texto):
             inicio = max(0, match.start() - 180)
             fim = min(len(texto), match.end() + 220)
             janela = self._normalizar(texto_lower[inicio:fim])
-            if any(self._normalizar(padrao) in janela for padrao in PADROES_VENCEDOR) or "melhor proposta" in janela:
-                vencedores.add(match.group(1))
+            if any(self._normalizar(padrao) in janela for padrao in PADROES_ADJUDICATARIO):
+                adjudicatarios.add(match.group(1))
 
-        for padrao in PADROES_VENCEDOR:
+        for padrao in PADROES_ADJUDICATARIO:
             padrao_normalizado = self._normalizar(padrao)
             for match in re.finditer(re.escape(padrao_normalizado), contexto_normalizado):
                 inicio = max(0, match.start() - 220)
@@ -195,11 +196,11 @@ class PDFParserService:
                         abs(candidato.end() - posicao_padrao),
                     ),
                 )
-                vencedores.add(mais_proximo.group(0))
-        return vencedores
+                adjudicatarios.add(mais_proximo.group(0))
+        return adjudicatarios
 
     def _detectar_primeiro_colocado(self, texto):
-        vencedores = set()
+        adjudicatarios = set()
         texto_normalizado = self._normalizar(texto)
         for header in (
             "posicao fornecedor cpf/cnpj lance final",
@@ -212,8 +213,8 @@ class PDFParserService:
             trecho = texto_normalizado[inicio : inicio + 1800]
             match = FIRST_PLACE_RE.search(trecho)
             if match:
-                vencedores.add(match.group(2))
-        return vencedores
+                adjudicatarios.add(match.group(2))
+        return adjudicatarios
 
     def _normalizar(self, valor):
         sem_acento = unicodedata.normalize("NFKD", str(valor)).encode("ascii", "ignore").decode("ascii")

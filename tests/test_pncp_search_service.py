@@ -13,7 +13,6 @@ class FakeResponse:
 
 
 def test_busca_continua_quando_uma_combinacao_falha(monkeypatch):
-    monkeypatch.setattr(pncp_search_service, "PALAVRAS_CHAVE_TI", ["MPLS"])
     monkeypatch.setattr(
         pncp_search_service,
         "SEARCH_PROFILES",
@@ -26,9 +25,11 @@ def test_busca_continua_quando_uma_combinacao_falha(monkeypatch):
     service = PNCPSearchService()
     logs = []
     chamadas = []
+    ufs = []
 
     def fake_get(url, params=None, tentativas=None):
         chamadas.append(params["status"])
+        ufs.append(params["ufs"])
         if params["status"] == "encerrada":
             raise requests.exceptions.ConnectionError("Remote end closed connection without response")
         return FakeResponse(
@@ -49,10 +50,13 @@ def test_busca_continua_quando_uma_combinacao_falha(monkeypatch):
             limite_por_combinacao=1,
             pausa=0,
             logger=logs.append,
+            palavras_chave=["MPLS"],
+            ufs="SP",
         )
     )
 
     assert chamadas == ["encerrada", "vigente"]
+    assert ufs == ["SP", "SP"]
     assert len(registros) == 1
     assert registros[0].status_busca == "vigente"
     assert any("falha na consulta PNCP" in log for log in logs)

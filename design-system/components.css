@@ -1,0 +1,1529 @@
+/* ============================================================
+   COMPONENTS — Neo Corporate Brutalism
+   ------------------------------------------------------------
+   Pure CSS bound to semantic class names (not to any framework).
+   Recreate the markup contract for each block in Vue/Svelte/
+   Angular/plain HTML and these rules apply unchanged.
+
+   Depends on tokens.css + base.css.
+
+   Contents:
+     1.  App shell & frame
+     2.  Topbar, tabs, brand
+     3.  Buttons & icon buttons
+     4.  Panels & fields
+     5.  Workspace, rail, job list
+     6.  Headers, alerts, blank slate
+     7.  Pills & tones
+     8.  Metrics grid
+     9.  Progress band
+     10. Filters
+     11. Tables
+     12. CSV preview
+     13. Loaders & empty states
+     14. Auth shell + form
+     15. Bento grid
+     16. Responsive
+     17. Dark-mode component overrides
+   ============================================================ */
+
+/* Display elements that are not <h1..h3> still need Sora. */
+.brand-monogram,
+.bento-display,
+.metric strong {
+  font-family: Sora, Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ============================================================
+   1. APP SHELL & FRAME
+   ============================================================ */
+.app-shell {
+  min-height: 100vh;
+  background: var(--background);
+}
+
+.conversation-frame {
+  padding: 22px;
+  background: var(--background);
+}
+
+/* ============================================================
+   2. TOPBAR, TABS, BRAND
+   ============================================================ */
+.app-topbar {
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: stretch;
+  gap: 18px;
+  padding: 14px 22px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  align-self: center;
+  padding-bottom: 14px;
+}
+
+.brand-mark {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 0;
+  background: var(--text);
+  color: var(--surface);
+  flex: 0 0 auto;
+  font-family: Sora, Inter, sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+}
+
+.brand strong,
+.job-item strong,
+.metric strong {
+  display: block;
+}
+
+.brand span,
+.job-meta,
+.workspace-header p,
+.job-header p,
+.progress-band span,
+.section-toolbar p,
+.rail-header span,
+.bitrix-cell small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.app-topbar .brand span {
+  color: var(--text);
+}
+
+.conversation-tabs {
+  display: flex;
+  align-items: end;
+  gap: 0;
+  min-width: 0;
+}
+
+.conversation-tabs button {
+  min-height: 58px;
+  min-width: 168px;
+  border: 1px solid var(--border-soft);
+  border-bottom: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  padding: 10px 12px;
+  cursor: pointer;
+  margin-right: -1px;          /* collapse adjacent borders */
+}
+
+.conversation-tabs button svg {
+  color: var(--muted);
+}
+
+.conversation-tabs button:hover {
+  background: var(--hover);
+}
+
+.conversation-tabs button.active {
+  border-color: var(--border);
+  border-top: 2px solid var(--text);
+  background: var(--surface);
+  color: var(--text);
+  transform: translateY(1px);  /* seat the tab onto the frame */
+}
+
+.conversation-tabs button.active svg {
+  color: var(--text);
+}
+
+.conversation-tabs small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.conversation-tabs button.active small {
+  color: var(--muted);
+}
+
+.topbar-actions,
+.actions,
+.section-toolbar,
+.pagination,
+.job-header,
+.progress-band > div:first-child,
+.progress-band dl {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topbar-actions,
+.actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.app-topbar .topbar-actions {
+  align-self: center;
+  padding-bottom: 14px;
+}
+
+.session-chip {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0 10px;
+  color: var(--text);
+  background: transparent;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   3. BUTTONS & ICON BUTTONS
+   ============================================================ */
+.button {
+  min-height: 36px;
+  border: 1px solid var(--text);
+  border-radius: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  background: var(--text);
+  color: var(--surface);
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.button.warning {
+  background: var(--warning);
+  color: var(--warning-text);
+  border-color: var(--text);
+}
+
+.button.danger {
+  background: var(--danger);
+  color: var(--danger-text);
+  border-color: var(--danger-text);
+}
+
+.icon-button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--secondary);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.icon-button:disabled,
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* ============================================================
+   4. PANELS & FIELDS
+   ============================================================ */
+.auth-panel,
+.upload-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 0;
+  padding: 12px;
+}
+
+.auth-panel input,
+.upload-panel input {
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0 10px;
+  background: var(--field);
+  color: var(--text);
+}
+
+/* ============================================================
+   5. WORKSPACE, RAIL, JOB LIST
+   ============================================================ */
+.workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+
+.workspace-layout.with-rail {
+  grid-template-columns: 330px minmax(0, 1fr);
+  align-items: start;
+}
+
+.workspace {
+  min-width: 0;
+}
+
+.thread-rail {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 0;
+  max-height: calc(100vh - 124px);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 100px;
+}
+
+.thread-rail,
+.job-header,
+.metrics-grid,
+.progress-band,
+.records-section,
+.blank-slate,
+.csv-preview,
+.csv-preview-summary span,
+.filter-control,
+.checkbox-filter {
+  color: var(--text);
+}
+
+.rail-header,
+.rail-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.rail-header > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.rail-header strong,
+.rail-header span {
+  display: block;
+  line-height: 1.2;
+}
+
+.rail-pager {
+  justify-content: center;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.job-list {
+  padding: 10px;
+  overflow: auto;
+}
+
+.job-item {
+  width: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 12px;
+  cursor: pointer;
+  text-align: left;
+  margin-bottom: 6px;
+  border-left: 2px solid transparent;
+}
+
+.job-item strong,
+.job-item small,
+.job-item span {
+  color: var(--text);
+}
+
+.job-item:hover,
+.job-item.selected {
+  background: var(--hover);
+  border-color: var(--border);
+  border-left: 2px solid var(--text);
+}
+
+.job-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.job-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.job-meta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 0;
+  background: var(--muted);
+}
+
+/* ============================================================
+   6. HEADERS, ALERTS, BLANK SLATE
+   ============================================================ */
+.workspace-header {
+  margin-bottom: 16px;
+}
+
+.workspace-header h1,
+.job-header h2,
+.section-toolbar h3 {
+  margin: 0;
+  letter-spacing: -0.015em;
+}
+
+.workspace-header h1 {
+  font-size: 32px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.workspace-header p,
+.job-header p,
+.section-toolbar p {
+  margin: 6px 0 0;
+}
+
+.job-header,
+.metrics-grid,
+.progress-band,
+.records-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+}
+
+.job-header {
+  padding: 18px;
+}
+
+.upload-card {
+  padding: 16px;
+}
+
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--text);
+  background: var(--warning);
+  color: var(--warning-text);
+  padding: 12px;
+  border-radius: 0;
+  margin-bottom: 16px;
+}
+
+.alert.error {
+  border-color: var(--danger-text);
+  background: var(--danger);
+  color: var(--danger-text);
+}
+
+.blank-slate {
+  min-height: 420px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: var(--text);
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.blank-slate span {
+  max-width: 520px;
+}
+
+/* ============================================================
+   7. PILLS & TONES
+   ============================================================ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--surface-strong);
+  color: var(--text);
+  border: 1px solid var(--border-soft);
+}
+
+.green {
+  background-color: var(--success);
+  color: var(--success-text);
+  border-color: var(--primary-strong);
+}
+
+.blue {
+  background-color: rgba(93, 115, 126, 0.18);
+  color: var(--secondary);
+  border-color: var(--secondary);
+}
+
+.amber {
+  background-color: var(--warning);
+  color: var(--warning-text);
+  border-color: var(--text);
+}
+
+.red {
+  background-color: var(--danger);
+  color: var(--danger-text);
+  border-color: var(--danger-text);
+}
+
+.muted {
+  background-color: rgba(93, 115, 126, 0.14);
+  color: var(--muted);
+}
+
+.neutral {
+  background-color: rgba(93, 115, 126, 0.14);
+  color: var(--secondary);
+}
+
+/* ============================================================
+   8. METRICS GRID — fused-border "spreadsheet" effect
+   ============================================================ */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 0;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  margin-bottom: 16px;
+}
+
+.metrics-grid.compact {
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+}
+
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 16px;
+  min-width: 0;
+  margin-right: -1px;          /* fuse borders horizontally */
+  margin-bottom: -1px;         /* fuse borders vertically */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metric span {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}
+
+.metric strong {
+  margin-top: 2px;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.metric.green strong {
+  color: var(--primary-strong);
+}
+
+.metric.red strong {
+  color: var(--danger-text);
+}
+
+.metric.blue strong {
+  color: var(--secondary);
+}
+
+.metric.amber {
+  background: var(--warning);
+}
+
+.metric.amber strong {
+  color: var(--warning-text);
+}
+
+/* ============================================================
+   9. PROGRESS BAND
+   ============================================================ */
+.progress-band,
+.records-section {
+  padding: 16px;
+}
+
+.progress-track {
+  height: 8px;
+  background: var(--surface-strong);
+  border-radius: 0;
+  overflow: hidden;
+  margin: 14px 0;
+  border: 1px solid var(--border-soft);
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--text);
+}
+
+.progress-band dl {
+  margin: 0;
+}
+
+.progress-band dt {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.progress-band dd {
+  margin: 3px 0 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   10. FILTERS
+   ============================================================ */
+.filter-control,
+.checkbox-filter {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0 10px;
+  background: var(--field);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.checkbox-filter.compact {
+  width: 100%;
+  justify-content: flex-start;
+  margin-bottom: 8px;
+}
+
+.filter-control select {
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.filter-control input {
+  width: 190px;
+  min-height: 30px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.checkbox-filter input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--text);
+}
+
+.view-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ============================================================
+   11. TABLES
+   ============================================================ */
+.table-shell {
+  width: 100%;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  margin-top: 14px;
+  background: var(--surface);
+}
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 1280px;
+}
+
+th,
+td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  text-align: left;
+  vertical-align: top;
+  font-size: 14px;
+}
+
+th {
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+tbody tr:hover td {
+  background: var(--hover);
+}
+
+.pagination {
+  margin-top: 14px;
+}
+
+/* Cell helpers — generic content cells with wrapping rules. */
+.bitrix-cell {
+  display: grid;
+  gap: 3px;
+}
+
+.company-cell > *,
+.cnae-cell > *,
+.fit-cell > * {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.company-cell > :last-child,
+.cnae-cell > :last-child,
+.fit-cell > :last-child {
+  margin-bottom: 0;
+}
+
+.company-cell strong,
+.cnae-cell strong,
+.company-cell small,
+.cnae-cell small,
+.reason-cell {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.company-cell small,
+.cnae-cell small {
+  color: var(--text);
+}
+
+.company-cell {
+  min-width: 360px;
+  max-width: 560px;
+}
+
+.cnae-cell {
+  min-width: 260px;
+  max-width: 380px;
+}
+
+.reason-cell {
+  max-width: 380px;
+  color: var(--text);
+}
+
+.fit-cell {
+  min-width: 190px;
+  color: var(--text);
+}
+
+.fit-flag {
+  width: fit-content;
+  border: 1px solid var(--text);
+  border-radius: 0;
+  padding: 2px 8px;
+  color: var(--warning-text);
+  background: var(--warning);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ============================================================
+   12. CSV PREVIEW
+   ============================================================ */
+.csv-preview {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.csv-preview-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.csv-preview-summary span {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.preview-table {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.preview-table table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 720px;
+}
+
+.preview-table th,
+.preview-table td {
+  border-right: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-table th:last-child,
+.preview-table td:last-child {
+  border-right: 0;
+}
+
+.preview-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.partner-chip {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text);
+}
+
+/* ============================================================
+   13. LOADERS & EMPTY STATES
+   ============================================================ */
+.table-loading,
+.loading-list,
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text);
+  min-height: 72px;
+}
+
+/* ============================================================
+   14. AUTH SHELL + FORM
+   Full-viewport primary block, form aligned left, bento right.
+   ============================================================ */
+.auth-shell {
+  min-height: 100vh;
+  background: var(--primary);
+  color: var(--text);
+  display: grid;
+  grid-template-columns: minmax(360px, 480px) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.auth-shell[data-theme="dark"] {
+  background: #294138;
+  color: #f0f7ee;
+}
+
+.auth-form-panel {
+  padding: clamp(36px, 6vw, 72px) clamp(28px, 4vw, 60px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+  border-right: 1px solid rgba(10, 17, 8, 0.35);
+}
+
+.auth-shell[data-theme="dark"] .auth-form-panel {
+  border-right-color: rgba(240, 247, 238, 0.18);
+}
+
+.auth-form-panel header {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.brand-monogram {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: lowercase;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.brand-monogram em {
+  font-style: normal;
+  opacity: 0.5;
+}
+
+.brand-logo {
+  display: block;
+  height: 96px;
+  width: auto;
+  margin-left: -45px;
+  margin-top: -12px;
+  margin-bottom: -8px;
+}
+
+/* The signature giant display headline. */
+.auth-form-panel h1 {
+  margin: 0;
+  font-size: clamp(72px, 9vw, 120px);
+  line-height: 0.82;
+  letter-spacing: -0.04em;
+  font-weight: 800;
+  text-transform: lowercase;
+  margin-left: -6px;
+}
+
+.auth-form-panel header p {
+  margin: 0;
+  color: inherit;
+  opacity: 0.78;
+  font-size: 15px;
+  max-width: 32ch;
+}
+
+.auth-shell .auth-panel {
+  display: grid;
+  gap: 10px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.auth-shell .auth-panel input {
+  width: 100%;
+  min-height: 52px;
+  background: var(--surface);
+  border: 1px solid var(--text);
+  border-radius: 0;
+  padding: 0 16px;
+  font-size: 15px;
+  color: var(--text);
+  text-align: left;
+}
+
+.auth-shell[data-theme="dark"] .auth-panel input {
+  background: #0a1108;
+  border-color: #f0f7ee;
+  color: #f0f7ee;
+}
+
+.auth-shell .auth-panel input:focus {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+.auth-shell .auth-panel .button {
+  width: 100%;
+  min-height: 52px;
+  background: var(--text);
+  color: var(--surface);
+  border: 1px solid var(--text);
+  border-radius: 0;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+
+.auth-shell[data-theme="dark"] .auth-panel .button {
+  background: #f0f7ee;
+  color: #0a1108;
+  border-color: #f0f7ee;
+}
+
+.auth-error {
+  border: 1px solid var(--text);
+  background: var(--danger);
+  color: var(--danger-text);
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.auth-theme {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--text);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.auth-shell[data-theme="dark"] .auth-theme {
+  border-color: #f0f7ee;
+  color: #f0f7ee;
+}
+
+.auth-form-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+}
+
+/* ============================================================
+   15. BENTO GRID
+   8x6 grid of cards positioned by named spans. The card
+   background colors here are intentionally DECORATIVE and
+   hard-coded (the one place that bypasses tokens).
+   ============================================================ */
+.auth-bento {
+  padding: clamp(28px, 4vw, 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-width: 0;
+}
+
+.auth-bento-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.75;
+}
+
+.bento-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(48px, 1fr));
+  grid-template-rows: repeat(6, minmax(72px, 1fr));
+  gap: 8px;
+  align-items: stretch;
+}
+
+.bento-card {
+  border: 1px solid var(--text);
+  border-radius: 0;
+  background: var(--surface);
+  min-height: 54px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: 14px;
+  color: var(--text);
+  position: relative;
+}
+
+.bento-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  opacity: 0.75;
+}
+
+.bento-display {
+  font-size: clamp(28px, 3vw, 44px);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.bento-card p,
+.bento-card small {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  opacity: 0.78;
+}
+
+.bento-card-mini {
+  padding: 0;
+}
+
+/* --- Named spans --- */
+.bento-card-large {
+  grid-column: 1 / span 4;
+  grid-row: 1 / span 4;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.bento-card-large .bento-display {
+  font-size: clamp(36px, 3.4vw, 60px);
+  word-break: break-word;
+}
+
+.bento-card-medium {
+  grid-column: 5 / span 2;
+  grid-row: 1 / span 2;
+}
+
+.bento-card-tall {
+  grid-column: 7 / span 2;
+  grid-row: 1 / span 3;
+}
+
+.bento-card-wide {
+  grid-column: 5 / span 3;
+  grid-row: 4 / span 2;
+}
+
+.bento-card-small {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.bento-card-small:nth-of-type(5) {
+  grid-column: 5;
+  grid-row: 3;
+}
+
+.bento-card-small:nth-of-type(6) {
+  grid-column: 6;
+  grid-row: 3;
+}
+
+.bento-card-small:nth-of-type(7) {
+  grid-column: 8;
+  grid-row: 4;
+}
+
+.bento-card-small:nth-of-type(8) {
+  grid-column: 8;
+  grid-row: 5;
+}
+
+.bento-card-mini:nth-of-type(9) {
+  grid-column: 1;
+  grid-row: 5;
+}
+.bento-card-mini:nth-of-type(10) {
+  grid-column: 2;
+  grid-row: 5;
+}
+.bento-card-mini:nth-of-type(11) {
+  grid-column: 3;
+  grid-row: 5;
+}
+.bento-card-mini:nth-of-type(12) {
+  grid-column: 4;
+  grid-row: 5;
+}
+
+/* --- Decorative colors (light) --- */
+.bento-card-large {
+  background: var(--background);
+  color: #000;
+}
+.bento-card-medium {
+  background: #5d737e;
+  color: #f0f7ee;
+}
+.bento-card-tall {
+  background: #fff07c;
+  color: #000;
+}
+.bento-card-wide {
+  background: #0a1108;
+  color: #f0f7ee;
+}
+.bento-card-small:nth-of-type(5) {
+  background: var(--background);
+}
+.bento-card-small:nth-of-type(6) {
+  background: #c4dcce;
+}
+.bento-card-small:nth-of-type(7) {
+  background: #5d737e;
+  color: #f0f7ee;
+}
+.bento-card-small:nth-of-type(8) {
+  background: #0a1108;
+  color: #f0f7ee;
+}
+.bento-card-mini:nth-of-type(9) {
+  background: var(--background);
+}
+.bento-card-mini:nth-of-type(10) {
+  background: #fff07c;
+}
+.bento-card-mini:nth-of-type(11) {
+  background: #5d737e;
+}
+.bento-card-mini:nth-of-type(12) {
+  background: #0a1108;
+}
+
+/* --- Bento sub-elements --- */
+.bento-status-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bento-status-row .status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.bento-status-row .status-dot.up {
+  background: #87bba2;
+  box-shadow: 0 0 0 3px rgba(135, 187, 162, 0.3);
+}
+
+.bento-status-row .status-dot.down {
+  background: #f3d8da;
+  box-shadow: 0 0 0 3px rgba(243, 216, 218, 0.3);
+}
+
+.bento-status-row strong {
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.bento-capabilities ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bento-capabilities li {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bento-capabilities li::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+.bento-clock {
+  justify-content: space-between;
+}
+
+.bento-clock .bento-display {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(28px, 2.8vw, 44px);
+  white-space: nowrap;
+}
+
+.bento-brand {
+  justify-content: space-between;
+}
+
+/* ============================================================
+   16. RESPONSIVE
+   ============================================================ */
+@media (max-width: 1180px) {
+  .app-topbar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .conversation-tabs {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+
+  .workspace-layout.with-rail {
+    grid-template-columns: 290px minmax(0, 1fr);
+  }
+
+  .metrics-grid,
+  .metrics-grid.compact {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-form-panel {
+    border-right: 0;
+    border-bottom: 1px solid rgba(10, 17, 8, 0.35);
+  }
+
+  .auth-bento {
+    min-height: 60vh;
+  }
+
+  .bento-grid {
+    grid-template-columns: repeat(3, minmax(80px, 1fr));
+    grid-template-rows: repeat(5, minmax(72px, 1fr));
+  }
+
+  .bento-card-large,
+  .bento-card-medium,
+  .bento-card-wide,
+  .bento-card-tall,
+  .bento-card-small,
+  .bento-card-mini {
+    grid-column: auto !important;
+    grid-row: auto !important;
+  }
+
+  .app-topbar,
+  .conversation-frame {
+    padding: 14px;
+  }
+
+  .conversation-tabs {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .conversation-tabs button {
+    min-width: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .workspace-layout.with-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .thread-rail {
+    max-height: 360px;
+    position: static;
+  }
+
+  .job-header,
+  .section-toolbar,
+  .progress-band > div:first-child,
+  .progress-band dl {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .actions,
+  .topbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .button {
+    flex: 1 1 150px;
+  }
+
+  .metrics-grid,
+  .metrics-grid.compact {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+}
+
+/* ============================================================
+   17. DARK-MODE COMPONENT OVERRIDES
+   Token swaps live in tokens.css; these are the few places that
+   need per-component tweaks beyond the variables.
+   ============================================================ */
+[data-theme="dark"].app-shell {
+  background: var(--background);
+}
+
+[data-theme="dark"] .conversation-tabs button.active {
+  background: var(--surface);
+  color: var(--text);
+}
+
+[data-theme="dark"] .button {
+  background: var(--text);
+  color: var(--background);
+  border-color: var(--text);
+}
+
+[data-theme="dark"] .button.secondary {
+  background: transparent;
+  color: var(--text);
+}
+
+[data-theme="dark"] .brand-mark {
+  background: var(--text);
+  color: var(--background);
+}
+
+[data-theme="dark"] .bento-card {
+  border-color: rgba(240, 247, 238, 0.4);
+}
+
+[data-theme="dark"] .bento-card-large {
+  background: #162218;
+  color: #f0f7ee;
+}
+[data-theme="dark"] .bento-card-medium {
+  background: #5d737e;
+  color: #f0f7ee;
+}
+[data-theme="dark"] .bento-card-tall {
+  background: #fff07c;
+  color: #0a1108;
+}
+[data-theme="dark"] .bento-card-wide {
+  background: #87bba2;
+  color: #0a1108;
+}
+[data-theme="dark"] .bento-card-small:nth-of-type(5) {
+  background: #162218;
+}
+[data-theme="dark"] .bento-card-small:nth-of-type(6) {
+  background: #0a1108;
+}
+[data-theme="dark"] .bento-card-small:nth-of-type(7) {
+  background: #5d737e;
+}
+[data-theme="dark"] .bento-card-small:nth-of-type(8) {
+  background: #87bba2;
+  color: #0a1108;
+}
+[data-theme="dark"] .bento-card-mini:nth-of-type(9) {
+  background: #162218;
+}
+[data-theme="dark"] .bento-card-mini:nth-of-type(10) {
+  background: #fff07c;
+}
+[data-theme="dark"] .bento-card-mini:nth-of-type(11) {
+  background: #5d737e;
+}
+[data-theme="dark"] .bento-card-mini:nth-of-type(12) {
+  background: #87bba2;
+}

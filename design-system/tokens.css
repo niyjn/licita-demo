@@ -1,0 +1,99 @@
+/* ============================================================
+   DESIGN TOKENS — Neo Corporate Brutalism
+   ------------------------------------------------------------
+   The single source of truth for the visual language. Every
+   component references these variables and NEVER raw colors
+   (the only exception is the decorative bento grid). Swapping
+   the `data-theme` attribute on the root element re-themes the
+   whole UI for free.
+
+   Import order: tokens.css → base.css → components.css
+   ============================================================ */
+
+:root {
+  /* Core */
+  --text: #000000;
+  --background: #f0f7ee;
+  --primary: #87bba2;        /* sage */
+  --primary-strong: #4f8f78;
+  --secondary: #5d737e;      /* slate */
+  --accent: #5d737e;
+
+  /* Surfaces */
+  --surface: #f0f7ee;
+  --surface-strong: rgba(93, 115, 126, 0.1);
+  --surface-muted: rgba(93, 115, 126, 0.06);
+
+  /* Borders — hard, high contrast */
+  --border: rgba(10, 17, 8, 0.55);
+  --border-soft: rgba(10, 17, 8, 0.18);
+
+  /* Auxiliary text */
+  --muted: #3d4a4f;
+
+  /* Component text roles */
+  --button-text: #000000;
+  --card-text: var(--text);
+  --auth-icon: #000000;
+
+  /* States */
+  --danger: #f3d8da;
+  --warning: #fff07c;        /* acid yellow — one of only two accents */
+  --success: #87bba2;
+  --danger-text: #7a2f38;
+  --warning-text: #000000;
+  --success-text: #000000;
+
+  /* Interaction */
+  --hover: rgba(135, 187, 162, 0.16);
+  --field: rgba(93, 115, 126, 0.08);
+
+  /* Shape — corners are square by default; this is used on a
+     handful of large containers only. */
+  --radius: 4px;
+}
+
+/* ------------------------------------------------------------
+   LIGHT THEME (explicit) — applied when the root carries
+   data-theme="light". Mirrors :root but with a slightly cooler
+   background and stronger sage surfaces.
+   ------------------------------------------------------------ */
+[data-theme="light"] {
+  --background: #e4f0e5;
+  --surface: #f0f7ee;
+  --surface-strong: rgba(135, 187, 162, 0.24);
+  --surface-muted: rgba(135, 187, 162, 0.14);
+  --border: rgba(10, 17, 8, 0.6);
+  --border-soft: rgba(10, 17, 8, 0.2);
+  --hover: rgba(135, 187, 162, 0.22);
+  --field: rgba(93, 115, 126, 0.12);
+}
+
+/* ------------------------------------------------------------
+   DARK THEME — applied when the root carries data-theme="dark".
+   ------------------------------------------------------------ */
+[data-theme="dark"] {
+  --text: #f0f7ee;
+  --background: #0a1108;
+  --primary: #87bba2;
+  --primary-strong: #87bba2;
+  --secondary: #5d737e;
+  --accent: #5d737e;
+  --surface: #111b14;
+  --surface-strong: #162218;
+  --surface-muted: rgba(240, 247, 238, 0.04);
+  --border: rgba(240, 247, 238, 0.45);
+  --border-soft: rgba(240, 247, 238, 0.16);
+  --muted: rgba(240, 247, 238, 0.68);
+  --button-text: #0a1108;
+  --card-text: var(--text);
+  --auth-icon: #0a1108;
+  --danger: #5c2630;
+  --warning: #fff07c;
+  --success: #87bba2;
+  --danger-text: #f5c7cb;
+  --warning-text: #0a1108;
+  --success-text: #0a1108;
+  --hover: rgba(135, 187, 162, 0.12);
+  --field: rgba(240, 247, 238, 0.04);
+}

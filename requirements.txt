@@ -1,7 +1,8 @@
 requests
 pandas
+flask
+gunicorn
 python-dateutil
 pdfplumber
 pdf2image
 pytesseract
-psycopg[binary]

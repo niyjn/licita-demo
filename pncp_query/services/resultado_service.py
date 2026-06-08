@@ -16,7 +16,7 @@ class ResultadoService:
         self.http = http or HttpClient()
 
     def adjudicatarios(self, orgao_cnpj, ano, sequencial):
-        """Retorna a lista de adjudicatarios (vencedores) de uma compra.
+        """Retorna a lista de adjudicatarios de uma compra.
 
         Cada item: {cnpj, nome, valor_homologado, numero_item}.
         Deduplica por CNPJ, somando o valor homologado.
