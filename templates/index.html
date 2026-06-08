@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <section class="workspace">
-    <aside class="panel">
+  <section class="analysis-layout">
+    <aside class="analysis-sidebar">
       <div class="panel-header">
         <div>
           <span class="eyebrow">Filtros</span>
-          <h2>Nova analise</h2>
+          <h2>Nova análise</h2>
         </div>
       </div>
       <form id="analysis-form" method="post" action="/analises" class="filters">
         <label class="field">
-          <span>Area</span>
+          <span>Área</span>
           <select name="area">
             {% for area in areas %}
               <option value="{{ area }}">{{ area }}</option>
@@ -27,7 +27,7 @@
           </select>
         </label>
         <label class="field">
-          <span>Inicio</span>
+          <span>Início</span>
           <input type="date" name="data_inicial" value="{{ periodo_padrao[0] }}">
         </label>
         <label class="field">
@@ -43,97 +43,152 @@
       <p id="analysis-status" class="muted"></p>
     </aside>
 
-    <section class="workspace-main">
-      <div class="page-header">
-        <div>
-          <span class="eyebrow">Ultima analise</span>
-          <h1>Funil reconciliavel</h1>
+    <section class="analysis-content">
+      <section class="analysis-section">
+        <div class="page-header">
+          <div>
+            <span class="eyebrow">Última análise</span>
+            <h1>Funil reconciliável</h1>
+          </div>
+          {% if run %}
+            <a class="btn btn-secondary" href="{{ url_for('ver_analise', run_id=run.id, uf=uf_atual, mostrar='ocultos' if not incluir_ocultos else None) }}">
+              {% if incluir_ocultos %}Ocultar vazios{% else %}Mostrar vazios{% endif %}
+            </a>
+          {% endif %}
         </div>
-        {% if run %}
-          <a class="btn btn-secondary" href="{{ url_for('ver_analise', run_id=run.id, uf=uf_atual, mostrar='ocultos' if not incluir_ocultos else None) }}">
-            {% if incluir_ocultos %}Ocultar vazios{% else %}Mostrar vazios{% endif %}
+
+        <div class="metrics-grid">
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}">
+            <span>Atas lidas</span>
+            <strong>{{ resumo.atas_lidas|default(0) }}</strong>
           </a>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id) if run else '#' }}">
+            <span>CNPJs únicos das atas</span>
+            <strong>{{ resumo.cnpjs_ata_unicos|default(0) }}</strong>
+          </a>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_invalido') if run else '#' }}">
+            <span>Dígito inválido</span>
+            <strong>{{ resumo.removido_invalido|default(0) }}</strong>
+          </a>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_orgao') if run else '#' }}">
+            <span>Órgão comprador</span>
+            <strong>{{ resumo.removido_orgao|default(0) }}</strong>
+          </a>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_vencedor') if run else '#' }}">
+            <span>Coincide com vencedor</span>
+            <strong>{{ resumo.removido_vencedor|default(0) }}</strong>
+          </a>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}">
+            <span>Perdedores finais</span>
+            <strong>{{ resumo.perdedores_final|default(resumo.perdedores|default(0)) }}</strong>
+          </a>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='vencedor') if run else '#' }}">
+            <span>Vencedores estruturados</span>
+            <strong>{{ resumo.vencedores|default(0) }}</strong>
+          </a>
+          <div class="metric">
+            <span>Resultado final</span>
+            <strong>{{ resumo.resultado_final|default(0) }}</strong>
+          </div>
+        </div>
+
+        <p class="alert">
+          Perdedores são inferidos dos CNPJs válidos encontrados nas atas, após limpeza.
+          Vencedores vêm da fonte estruturada do PNCP.
+        </p>
+      </section>
+
+      <section class="analysis-section">
+        <div class="section-toolbar">
+          <div>
+            <span class="eyebrow">Proveniência</span>
+            <h3>Atas e editais lidos</h3>
+            <p>CNPJs extraídos por arquivo, com fonte, disposição e motivo de descarte quando houver.</p>
+          </div>
+        </div>
+        {% if documentos %}
+          <div class="document-list">
+            {% for documento in documentos %}
+              <article class="document-card">
+                <h3>{{ documento.arquivo }}</h3>
+                <div class="table-card">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>CNPJ</th>
+                        <th>Disposição</th>
+                        <th>Motivo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for registro in documento.registros %}
+                        <tr>
+                          <td>{{ registro.cnpj }}</td>
+                          <td>{{ registro.disposition }}</td>
+                          <td>{{ registro.reason }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="blank-state">
+            <span class="eyebrow">Sem atas</span>
+            <h2>Nenhuma ata ou edital lido nesta análise</h2>
+            <p>Quando houver leitura de PDFs, os CNPJs extraídos aparecerão aqui.</p>
+          </div>
         {% endif %}
-      </div>
+      </section>
 
-      <div class="metrics-grid">
-        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}">
-          <span>Atas lidas</span>
-          <strong>{{ resumo.atas_lidas|default(0) }}</strong>
-        </a>
-        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id) if run else '#' }}">
-          <span>CNPJs unicos das atas</span>
-          <strong>{{ resumo.cnpjs_ata_unicos|default(0) }}</strong>
-        </a>
-        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_invalido') if run else '#' }}">
-          <span>Digito invalido</span>
-          <strong>{{ resumo.removido_invalido|default(0) }}</strong>
-        </a>
-        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_orgao') if run else '#' }}">
-          <span>Orgao comprador</span>
-          <strong>{{ resumo.removido_orgao|default(0) }}</strong>
-        </a>
-        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_vencedor') if run else '#' }}">
-          <span>Coincide com vencedor</span>
-          <strong>{{ resumo.removido_vencedor|default(0) }}</strong>
-        </a>
-        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}">
-          <span>Perdedores finais</span>
-          <strong>{{ resumo.perdedores_final|default(resumo.perdedores|default(0)) }}</strong>
-        </a>
-        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='vencedor') if run else '#' }}">
-          <span>Vencedores estruturados</span>
-          <strong>{{ resumo.vencedores|default(0) }}</strong>
-        </a>
-        <div class="metric">
-          <span>Resultado final</span>
-          <strong>{{ resumo.resultado_final|default(0) }}</strong>
+      <section class="analysis-section">
+        <div class="section-toolbar">
+          <div>
+            <span class="eyebrow">Resultados</span>
+            <h3>Contratos classificados</h3>
+          </div>
         </div>
-      </div>
-
-      <p class="alert">
-        Perdedores sao inferidos dos CNPJs validos encontrados nas atas, apos limpeza.
-        Vencedores vêm da fonte estruturada do PNCP.
-      </p>
-
-      {% if contratos %}
-        <div class="table-card">
-          <table>
-            <thead>
-              <tr>
-                <th>Orgao</th>
-                <th>Contrato</th>
-                <th>Vencedores</th>
-                <th>Perdedores</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for contrato in contratos %}
+        {% if contratos %}
+          <div class="table-card">
+            <table>
+              <thead>
                 <tr>
-                  <td>{{ contrato.orgao_nome or contrato.orgao_cnpj }}</td>
-                  <td>
-                    <strong>{{ contrato.titulo_limpo }}</strong><br>
-                    <span class="muted">{{ contrato.numero_controle }}</span>
-                  </td>
-                  <td>{{ contrato.vencedores|map(attribute='nome')|join(', ') or contrato.vencedores|length }}</td>
-                  <td>{{ contrato.perdedores|map(attribute='nome')|join(', ') or contrato.perdedores|length }}</td>
-                  <td>
-                    <span class="pill">{{ contrato.status }}</span>
-                    {% if contrato.motivo_status %}<br><span class="muted">{{ contrato.motivo_status }}</span>{% endif %}
-                  </td>
+                  <th>Órgão</th>
+                  <th>Contrato</th>
+                  <th>Vencedores</th>
+                  <th>Perdedores</th>
+                  <th>Status</th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <div class="blank-state">
-          <span class="eyebrow">Sem dados</span>
-          <h2>Nenhum contrato final para {{ uf_atual }}</h2>
-          <p>Execute uma analise ou habilite a exibicao de vazios e descartados.</p>
-        </div>
-      {% endif %}
+              </thead>
+              <tbody>
+                {% for contrato in contratos %}
+                  <tr>
+                    <td>{{ contrato.orgao_nome or contrato.orgao_cnpj }}</td>
+                    <td>
+                      <strong>{{ contrato.titulo_limpo }}</strong><br>
+                      <span class="muted">{{ contrato.numero_controle }}</span>
+                    </td>
+                    <td>{{ contrato.vencedores|map(attribute='nome')|join(', ') or contrato.vencedores|length }}</td>
+                    <td>{{ contrato.perdedores|map(attribute='nome')|join(', ') or contrato.perdedores|length }}</td>
+                    <td>
+                      <span class="pill">{{ contrato.status }}</span>
+                      {% if contrato.motivo_status %}<br><span class="muted">{{ contrato.motivo_status }}</span>{% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="blank-state">
+            <span class="eyebrow">Sem dados</span>
+            <h2>Nenhum contrato final para {{ uf_atual }}</h2>
+            <p>Execute uma análise ou habilite a exibição de vazios e descartados.</p>
+          </div>
+        {% endif %}
+      </section>
     </section>
   </section>
 
@@ -142,7 +197,7 @@
     const statusEl = document.querySelector("#analysis-status");
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      statusEl.textContent = "Criando analise...";
+      statusEl.textContent = "Criando análise...";
       const response = await fetch("/analises", { method: "POST", body: new FormData(form) });
       const payload = await response.json();
       const runId = payload.run_id;

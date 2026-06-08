@@ -1,3 +1,4 @@
+import re
 import unicodedata
 from pathlib import Path
 from threading import Thread
@@ -53,6 +54,7 @@ def create_app(config=None):
         incluir_ocultos = request.args.get("mostrar") == "ocultos"
         contratos = _listar_contratos(db_path, uf, run_id=run["id"] if run else None, incluir_ocultos=incluir_ocultos)
         resumo = _resumo_run(db_path, run) if run else _resumo_contratos(contratos)
+        documentos = _documentos_extraidos(db_path, run["id"]) if run else []
         return render_template(
             "index.html",
             areas=AREAS,
@@ -63,6 +65,7 @@ def create_app(config=None):
             resumo=resumo,
             run=run,
             incluir_ocultos=incluir_ocultos,
+            documentos=documentos,
         )
 
     @app.post("/analises")
@@ -141,6 +144,18 @@ def _contrato_view(contrato):
     return contrato
 
 
+def _documentos_extraidos(db_path, run_id):
+    documentos = {}
+    for registro in Storage(db_path).listar_cnpjs_auditoria(run_id):
+        if registro.get("source") != "ata":
+            continue
+        arquivos = [item.strip() for item in (registro.get("origin_file") or "Ata sem nome").split(",") if item.strip()]
+        for arquivo in arquivos:
+            documento = documentos.setdefault(arquivo, {"arquivo": arquivo, "registros": []})
+            documento["registros"].append(registro)
+    return sorted(documentos.values(), key=lambda item: item["arquivo"])
+
+
 def _titulo_limpo(contrato):
     objeto = contrato.get("objeto") or ""
     texto = _normalizar_titulo(objeto)
@@ -152,23 +167,45 @@ def _titulo_limpo(contrato):
         "aquisicao de",
     )
     for prefixo in prefixos:
-        if texto.lower().startswith(prefixo):
+        if _sem_acento(texto).lower().startswith(prefixo):
             texto = texto[len(prefixo) :].strip(" .:-")
             break
     if texto:
         texto = texto[0].upper() + texto[1:]
     if not texto:
-        orgao = contrato.get("orgao_nome") or contrato.get("orgao_cnpj") or "Orgao"
+        orgao = contrato.get("orgao_nome") or contrato.get("orgao_cnpj") or "Órgão"
         local = " / ".join(parte for parte in (contrato.get("municipio"), contrato.get("uf")) if parte)
         texto = f"{orgao} {local} {contrato.get('numero_controle', '')}".strip()
     return texto[:157] + "..." if len(texto) > 160 else texto
 
 
 def _normalizar_titulo(valor):
-    sem_acento = unicodedata.normalize("NFKD", str(valor or "")).encode("ascii", "ignore").decode("ascii")
-    texto = " ".join(sem_acento.split())
+    texto = " ".join(str(valor or "").split())
     if texto.isupper():
         texto = texto.capitalize()
+    return _acentuar_termos_comuns(texto)
+
+
+def _sem_acento(valor):
+    return unicodedata.normalize("NFKD", str(valor or "")).encode("ascii", "ignore").decode("ascii")
+
+
+def _acentuar_termos_comuns(texto):
+    termos = {
+        "analise": "análise",
+        "aquisicao": "aquisição",
+        "contratacao": "contratação",
+        "exibicao": "exibição",
+        "gestao": "gestão",
+        "municipio": "município",
+        "orgao": "órgão",
+        "publica": "pública",
+        "publico": "público",
+        "servicos": "serviços",
+        "tecnico": "técnico",
+    }
+    for origem, destino in termos.items():
+        texto = re.sub(rf"\b{origem}\b", destino, texto, flags=re.IGNORECASE)
     return texto
 
 
@@ -195,7 +232,7 @@ def _params_json(payload):
 def _executar_analise_background(run_id, payload, db_path, analysis_func):
     storage = Storage(db_path)
     try:
-        storage.atualizar_run(run_id, status="running", progress=0, message="Analise iniciada.")
+        storage.atualizar_run(run_id, status="running", progress=0, message="Análise iniciada.")
 
         def progress(evento):
             atual = evento.get("atual")
@@ -216,11 +253,11 @@ def _executar_analise_background(run_id, payload, db_path, analysis_func):
             progress=progress,
         )
     except Exception as exc:
-        storage.atualizar_run(run_id, status="error", progress=100, message="Analise falhou.", error=str(exc))
+        storage.atualizar_run(run_id, status="error", progress=100, message="Análise falhou.", error=str(exc))
     finally:
         run = storage.obter_run(run_id)
         if run and run["status"] != "error":
-            storage.atualizar_run(run_id, status="done", progress=100, message="Analise concluida.", error="")
+            storage.atualizar_run(run_id, status="done", progress=100, message="Análise concluída.", error="")
 
 
 app = create_app()

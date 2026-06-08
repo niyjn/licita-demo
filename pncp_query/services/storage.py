@@ -1,4 +1,4 @@
-"""Persistencia leve em SQLite para o resultado da analise de atas.
+"""Persistência leve em SQLite para o resultado da análise de atas.
 
 Sem servidor: um unico arquivo .db, adequado para rodar em um container.
 Modela contratos e seus participantes (adjudicatario + demais participantes).
@@ -128,7 +128,7 @@ class Storage:
             conn.execute(
                 """
                 INSERT INTO runs (id, status, progress, message, params_json, created_at)
-                VALUES (?, 'queued', 0, 'Analise na fila.', ?, ?)
+                VALUES (?, 'queued', 0, 'Análise na fila.', ?, ?)
                 """,
                 (run_id, params_json, now),
             )

@@ -17,9 +17,10 @@ def test_index_renderiza_frontend_com_design_system(tmp_path):
     response = app.test_client().get("/")
 
     assert response.status_code == 200
-    assert b"Analise PNCP" in response.data
+    assert "Análise PNCP".encode() in response.data
     assert b"/design-system/tokens.css" in response.data
-    assert b"Funil reconciliavel" in response.data
+    assert "Funil reconciliável".encode() in response.data
+    assert b"analysis-layout" in response.data
 
 
 def test_healthz_retorna_ok():
@@ -80,7 +81,7 @@ def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(tmp_path):
             "run_id": "run-1",
             "numero_controle": "final-1",
             "orgao_cnpj": "12345678000195",
-            "orgao_nome": "Orgao Final",
+            "orgao_nome": "Órgão Final",
             "uf": "SP",
             "municipio": "Sao Paulo",
             "ano": "2026",
@@ -101,7 +102,7 @@ def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(tmp_path):
             "run_id": "run-1",
             "numero_controle": "vazio-1",
             "orgao_cnpj": "12345678000195",
-            "orgao_nome": "Orgao Vazio",
+            "orgao_nome": "Órgão Vazio",
             "uf": "SP",
             "municipio": "Sao Paulo",
             "ano": "2026",
@@ -127,14 +128,30 @@ def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(tmp_path):
             "resultado_final": 2,
         },
     )
+    storage.salvar_cnpjs_auditoria(
+        contrato_final,
+        "run-1",
+        [
+            {
+                "cnpj": "11444777000161",
+                "source": "ata",
+                "disposition": "perdedor_final",
+                "reason": "cnpj_valido_da_ata",
+                "origin_file": "ata-final.pdf",
+            }
+        ],
+    )
     app = create_app({"TESTING": True, "DB_PATH": db_path})
 
     response = app.test_client().get("/")
 
     assert response.status_code == 200
-    assert b"Funil reconciliavel" in response.data
-    assert b"Orgao Final" in response.data
-    assert b"Orgao Vazio" not in response.data
+    assert "Funil reconciliável".encode() in response.data
+    assert b"Atas e editais lidos" in response.data
+    assert b"ata-final.pdf" in response.data
+    assert b"11444777000161" in response.data
+    assert "Órgão Final".encode() in response.data
+    assert "Órgão Vazio".encode() not in response.data
     assert b"Software" in response.data
 
 
@@ -147,7 +164,7 @@ def test_endpoint_cnpjs_filtra_por_disposition(tmp_path):
             "run_id": "run-1",
             "numero_controle": "final-1",
             "orgao_cnpj": "12345678000195",
-            "orgao_nome": "Orgao Final",
+            "orgao_nome": "Órgão Final",
             "uf": "SP",
             "municipio": "Sao Paulo",
             "ano": "2026",
@@ -178,8 +195,8 @@ def test_titulo_limpo_remove_prefixo_burocratico():
     titulo = _titulo_limpo(
         {
             "objeto": "CONTRATACAO DE EMPRESA ESPECIALIZADA PARA SOFTWARE DE GESTAO MUNICIPAL",
-            "orgao_nome": "Orgao",
+            "orgao_nome": "Órgão",
         }
     )
 
-    assert titulo == "Software de gestao municipal"
+    assert titulo == "Software de gestão municipal"

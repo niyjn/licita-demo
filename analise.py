@@ -29,7 +29,7 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
         run_id = None
 
     if area not in AREAS:
-        raise ValueError(f"Area desconhecida: {area}")
+        raise ValueError(f"Área desconhecida: {area}")
 
     db_path = Path(db_path)
     storage = Storage(db_path)
@@ -106,7 +106,7 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
     resumo = {"contratos": contratos_salvos, "participantes": participantes_salvos}
     if run_id:
         resumo.update(storage.somar_metricas_run(run_id))
-    _emit(progress, "concluido", "Analise concluida.", total_compras, total_compras)
+    _emit(progress, "concluido", "Análise concluída.", total_compras, total_compras)
     return resumo
 
 
