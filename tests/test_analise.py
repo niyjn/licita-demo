@@ -58,7 +58,16 @@ class FakeResultado:
 
 class FakeEnrichment:
     def nome(self, cnpj):
-        return {"11444777000161": "Empresa B"}[cnpj]
+        return {"11444777000161": "Empresa B"}.get(cnpj, "")
+
+    def consultar(self, cnpj):
+        nome = {"11444777000161": "Empresa B", "11222333000181": "Empresa A"}.get(cnpj, "")
+        return {
+            "cnpj": cnpj,
+            "razao_social": nome,
+            "nome_fantasia": nome,
+            "situacao_cadastral": "ATIVA" if nome else ""
+        }
 
 
 def test_analisar_persiste_adjudicatario_e_participantes(monkeypatch, tmp_path):

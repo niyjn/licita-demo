@@ -64,6 +64,7 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
             adjudicatarios = []
 
         atas_lidas = 0
+        atas_falhas = 0
         cnpjs_origem = {}
         try:
             arquivos = downloader.listar_arquivos_relevantes(linha, PDF_DIR, chaves)
@@ -81,7 +82,10 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
                         cnpj_normalizado = somente_digitos(cnpj)
                         if cnpj_normalizado:
                             cnpjs_origem.setdefault(cnpj_normalizado, set()).add(arquivo.destino.name)
+                else:
+                    atas_falhas += 1
             except Exception as exc:
+                atas_falhas += 1
                 _emit(progress, "erro", f"Falha ao processar {arquivo.titulo}: {exc}.", indice, total_compras)
 
         auditoria = _montar_auditoria(
@@ -91,6 +95,7 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
             enrichment,
             cnpjs_origem,
             atas_lidas,
+            atas_falhas,
         )
         contrato = _montar_contrato(linha, chaves)
         contrato["run_id"] = run_id
@@ -132,7 +137,7 @@ def _buscar_compras(search, area, data_inicial, data_final, uf, limite, progress
     return compras
 
 
-def _montar_auditoria(adjudicatarios, cnpjs_ata, orgao_cnpj, enrichment, cnpjs_origem=None, atas_lidas=0):
+def _montar_auditoria(adjudicatarios, cnpjs_ata, orgao_cnpj, enrichment, cnpjs_origem=None, atas_lidas=0, atas_falhas=0):
     participantes = []
     registros = []
     cnpjs_vencedores = set()
@@ -143,21 +148,25 @@ def _montar_auditoria(adjudicatarios, cnpjs_ata, orgao_cnpj, enrichment, cnpjs_o
         if not cnpj:
             continue
         cnpjs_vencedores.add(cnpj)
+        dados_empresa = enrichment.consultar(cnpj)
+        situacao = dados_empresa.get("situacao_cadastral", "")
         participantes.append(
             {
                 "cnpj": cnpj,
-                "nome": item.get("nome", ""),
+                "nome": item.get("nome", "") or dados_empresa.get("razao_social", ""),
                 "papel": "adjudicatario",
                 "valor_homologado": item.get("valor_homologado"),
+                "situacao_cadastral": situacao,
             }
         )
         registros.append(
             {
                 "cnpj": cnpj,
-                "nome": item.get("nome", ""),
+                "nome": item.get("nome", "") or dados_empresa.get("razao_social", ""),
                 "source": "estruturada",
                 "disposition": "vencedor",
                 "reason": "resultado_pncp_estruturado",
+                "situacao_cadastral": situacao,
             }
         )
 
@@ -184,24 +193,36 @@ def _montar_auditoria(adjudicatarios, cnpjs_ata, orgao_cnpj, enrichment, cnpjs_o
         ("removido_vencedor", removido_vencedor, "coincidente_com_vencedor"),
     ):
         for cnpj in sorted(cnpjs):
-            registros.append(_registro_ata(cnpj, disposition, reason, cnpjs_origem))
+            dados_empresa = {}
+            if disposition != "removido_invalido":
+                dados_empresa = enrichment.consultar(cnpj)
+            nome = dados_empresa.get("razao_social", "")
+            situacao = dados_empresa.get("situacao_cadastral", "")
+            
+            registro = _registro_ata(cnpj, disposition, reason, cnpjs_origem, situacao_cadastral=situacao)
+            registro["nome"] = nome
+            registros.append(registro)
 
     for cnpj in sorted(perdedores_final):
-        nome = enrichment.nome(cnpj)
+        dados_empresa = enrichment.consultar(cnpj)
+        nome = dados_empresa.get("razao_social", "")
+        situacao = dados_empresa.get("situacao_cadastral", "")
         participantes.append(
             {
                 "cnpj": cnpj,
                 "nome": nome,
                 "papel": "participante",
                 "valor_homologado": None,
+                "situacao_cadastral": situacao,
             }
         )
-        registro = _registro_ata(cnpj, "perdedor_final", "cnpj_valido_da_ata", cnpjs_origem)
+        registro = _registro_ata(cnpj, "perdedor_final", "cnpj_valido_da_ata", cnpjs_origem, situacao_cadastral=situacao)
         registro["nome"] = nome
         registros.append(registro)
 
     metricas = {
         "atas_lidas": atas_lidas,
+        "atas_falhas": atas_falhas,
         "cnpjs_ata_unicos": len(cnpjs_ata_unicos),
         "removido_invalido": len(removido_invalido),
         "removido_orgao": len(removido_orgao),
@@ -213,7 +234,7 @@ def _montar_auditoria(adjudicatarios, cnpjs_ata, orgao_cnpj, enrichment, cnpjs_o
     return {"participantes": participantes, "registros": registros, "metricas": metricas}
 
 
-def _registro_ata(cnpj, disposition, reason, cnpjs_origem):
+def _registro_ata(cnpj, disposition, reason, cnpjs_origem, situacao_cadastral=""):
     return {
         "cnpj": cnpj,
         "source": "ata",
@@ -265,6 +286,7 @@ def _montar_contrato(linha, chaves):
         "objeto": linha.get("description") or linha.get("title", ""),
         "valor": linha.get("valor_global", ""),
         "data_publicacao": linha.get("data_publicacao_pncp", ""),
+        "item_url": linha.get("item_url", ""),
     }
 
 

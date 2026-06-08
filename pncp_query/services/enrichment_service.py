@@ -45,4 +45,5 @@ class EnrichmentService:
             "uf": payload.get("uf", "") or "",
             "municipio": payload.get("municipio", "") or "",
             "porte": payload.get("porte", "") or "",
+            "situacao_cadastral": payload.get("descricao_situacao_cadastral", "") or "",
         }

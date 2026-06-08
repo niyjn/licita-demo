@@ -1,6 +1,53 @@
 {% extends "base.html" %}
 
 {% block content %}
+  <style>
+    /* Empilhamento vertical dos filtros na barra lateral esquerda */
+    .filters {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .filters .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+    }
+    .filters .field span {
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .filters .field select,
+    .filters .field input {
+      width: 100%;
+      min-height: 38px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 0 !important;
+      background: var(--field);
+      color: var(--text);
+      box-shadow: none !important;
+      outline: none;
+      box-sizing: border-box;
+    }
+    /* Zera cantos arredondados e sombras de todos os componentes principais */
+    .btn,
+    .pill,
+    .metric,
+    .table-card,
+    .modal-content,
+    .document-card,
+    .run-fingerprint,
+    .alert,
+    input,
+    select,
+    button {
+      border-radius: 0px !important;
+      box-shadow: none !important;
+    }
+  </style>
+
   <section class="analysis-layout">
     <aside class="analysis-sidebar">
       <div class="panel-header">
@@ -38,30 +85,59 @@
           <span>Limite</span>
           <input type="number" name="limite" value="10" min="1" max="100">
         </label>
-        <button class="btn btn-primary" type="submit">Analisar</button>
+        <button class="btn btn-primary" type="submit" style="width: 100%;">Analisar</button>
       </form>
-      <p id="analysis-status" class="muted"></p>
+      <p id="analysis-status" class="muted" style="margin-top: 14px; font-weight: bold;"></p>
+      
+      <!-- Progress Bar Container -->
+      <div id="progress-container" style="display: none; margin-top: 10px; background: var(--surface-strong); height: 10px; border: 1px solid var(--border); border-radius: 0px; overflow: hidden; width: 100%;">
+        <div id="progress-bar" style="background: var(--primary-strong); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+      </div>
     </aside>
 
     <section class="analysis-content">
       <section class="analysis-section">
-        <div class="page-header">
+        <div class="page-header" style="margin-bottom: 16px;">
           <div>
             <span class="eyebrow">Última análise</span>
             <h1>Funil reconciliável</h1>
           </div>
           {% if run %}
-            <a class="btn btn-secondary" href="{{ url_for('ver_analise', run_id=run.id, uf=uf_atual, mostrar='ocultos' if not incluir_ocultos else None) }}">
-              {% if incluir_ocultos %}Ocultar vazios{% else %}Mostrar vazios{% endif %}
-            </a>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <a class="btn btn-secondary" href="{{ url_for('ver_analise', run_id=run.id, uf=uf_atual, mostrar='ocultos' if not incluir_ocultos else None) }}">
+                {% if incluir_ocultos %}Ocultar vazios{% else %}Mostrar vazios{% endif %}
+              </a>
+              <a class="btn btn-primary" href="/analises/{{ run.id }}/exportar" download style="display: flex; align-items: center; gap: 6px;">
+                Exportar Análise (JSON)
+              </a>
+            </div>
           {% endif %}
         </div>
 
+        <!-- Run Fingerprint (Metadata block) -->
+        {% if run and run_params %}
+          <div class="run-fingerprint" style="margin-bottom: 20px; padding: 16px; background: var(--surface-muted); border: 1px solid var(--border-soft); border-radius: 0px; font-size: 13px; line-height: 1.6; color: var(--text);">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 8px;">
+              <div><strong>UF:</strong> <span class="pill" style="font-weight: bold;">{{ run_params.uf }}</span></div>
+              <div><strong>Área:</strong> <span class="pill" style="font-weight: bold;">{{ run_params.area }}</span></div>
+              <div><strong>Limite:</strong> <code>{{ run_params.limite }}</code></div>
+              <div><strong>Período:</strong> <code>{{ run_params.data_inicial }}</code> a <code>{{ run_params.data_final }}</code></div>
+            </div>
+            <div style="border-top: 1px solid var(--border-soft); padding-top: 8px; margin-top: 8px; font-size: 11px;" class="muted">
+              Executado em: {{ run.created_at.replace('T', ' ') }} | ID da Run: <code>{{ run.id }}</code>
+            </div>
+          </div>
+        {% endif %}
+
         <div class="metrics-grid">
           <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}">
-            <span>Atas lidas</span>
+            <span>Atas lidas com sucesso</span>
             <strong>{{ resumo.atas_lidas|default(0) }}</strong>
           </a>
+          <div class="metric">
+            <span>Falhas de leitura / parser</span>
+            <strong>{{ resumo.atas_falhas|default(0) }}</strong>
+          </div>
           <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id) if run else '#' }}">
             <span>CNPJs únicos das atas</span>
             <strong>{{ resumo.cnpjs_ata_unicos|default(0) }}</strong>
@@ -79,7 +155,7 @@
             <strong>{{ resumo.removido_vencedor|default(0) }}</strong>
           </a>
           <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}">
-            <span>Perdedores finais</span>
+            <span>Perdedores finais (atas)</span>
             <strong>{{ resumo.perdedores_final|default(resumo.perdedores|default(0)) }}</strong>
           </a>
           <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='vencedor') if run else '#' }}">
@@ -92,10 +168,14 @@
           </div>
         </div>
 
-        <p class="alert">
-          Perdedores são inferidos dos CNPJs válidos encontrados nas atas, após limpeza.
-          Vencedores vêm da fonte estruturada do PNCP.
-        </p>
+        <!-- Realidade do Dado Alert -->
+        <div class="alert" style="margin-top: 18px; line-height: 1.5; padding: 14px; font-size: 13px; background: var(--surface-strong); border-left: 4px solid var(--secondary);">
+          <p style="margin: 0; font-weight: bold;">Realidade e Fragilidade das Atas:</p>
+          <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--muted);">
+            Vencedores vêm de fontes estruturadas do PNCP e são abundantes. Já os perdedores dependem da extração de atas em PDF, que são escassas e propensas a falhas de digitalização. 
+            Se a regra "ou mais perdedores" estiver ativa, editais sem atas legíveis serão ocultados. Clique em "Mostrar vazios" para ver todos os contratos analisados.
+          </p>
+        </div>
       </section>
 
       <section class="analysis-section">
@@ -123,7 +203,7 @@
                     <tbody>
                       {% for registro in documento.registros %}
                         <tr>
-                          <td>{{ registro.cnpj }}</td>
+                          <td><code>{{ registro.cnpj }}</code></td>
                           <td>{{ registro.disposition_label }}</td>
                           <td>{{ registro.reason_label }}</td>
                         </tr>
@@ -155,26 +235,114 @@
             <table>
               <thead>
                 <tr>
+                  <th style="width: 40px;"></th>
                   <th>Órgão</th>
-                  <th>Contrato</th>
-                  <th>Vencedores</th>
-                  <th>Perdedores</th>
+                  <th>Contrato / Edital</th>
+                  <th>Vencedores (estruturados)</th>
+                  <th>Perdedores (atas)</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {% for contrato in contratos %}
-                  <tr>
+                  <tr class="contract-row" data-id="{{ contrato.id }}">
+                    <td style="text-align: center; vertical-align: middle;">
+                      <button class="expand-btn" onclick="toggleContractDetails('{{ contrato.id }}')" style="background: var(--surface-strong); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; cursor: pointer; font-size: 11px; border-radius: 0px;">
+                        +
+                      </button>
+                    </td>
                     <td>{{ contrato.orgao_nome or contrato.orgao_cnpj }}</td>
                     <td>
                       <strong>{{ contrato.titulo_limpo }}</strong><br>
-                      <span class="muted">{{ contrato.numero_controle }}</span>
+                      <span class="muted" style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                        <a href="{{ contrato.portal_url }}" target="_blank" title="Ver edital original no Portal PNCP" style="text-decoration: underline; color: var(--primary-strong); font-weight: bold;">
+                          PNCP: {{ contrato.numero_controle }}
+                        </a>
+                      </span>
                     </td>
-                    <td>{{ contrato.vencedores|map(attribute='nome')|join(', ') or contrato.vencedores|length }}</td>
-                    <td>{{ contrato.perdedores|map(attribute='nome')|join(', ') or contrato.perdedores|length }}</td>
+                    <td>
+                      {% for p in contrato.vencedores %}
+                        <div style="margin-bottom: 6px;">
+                          <strong>{{ p.nome or 'Não identificado' }}</strong><br>
+                          <span class="muted" style="font-size: 11px;">
+                            CNPJ: <code>{{ p.cnpj }}</code>
+                            {% if p.situacao_cadastral %}
+                              | Status: <span class="pill {% if p.situacao_cadastral == 'ATIVA' %}success{% endif %}">{{ p.situacao_cadastral }}</span>
+                            {% endif %}
+                          </span>
+                        </div>
+                      {% else %}
+                        <span class="muted">Nenhum</span>
+                      {% endfor %}
+                    </td>
+                    <td>
+                      {% for p in contrato.perdedores %}
+                        <div style="margin-bottom: 6px;">
+                          <strong>{{ p.nome or 'Não identificado' }}</strong><br>
+                          <span class="muted" style="font-size: 11px;">
+                            CNPJ: <code>{{ p.cnpj }}</code>
+                            {% if p.situacao_cadastral %}
+                              | Status: <span class="pill {% if p.situacao_cadastral == 'ATIVA' %}success{% endif %}">{{ p.situacao_cadastral }}</span>
+                            {% endif %}
+                          </span>
+                        </div>
+                      {% else %}
+                        <span class="muted">Nenhum</span>
+                      {% endfor %}
+                    </td>
                     <td>
                       <span class="pill">{{ contrato.status_label }}</span>
-                      {% if contrato.motivo_status_label %}<br><span class="muted">{{ contrato.motivo_status_label }}</span>{% endif %}
+                      {% if contrato.motivo_status_label %}<br><span class="muted" style="font-size: 11px;">{{ contrato.motivo_status_label }}</span>{% endif %}
+                    </td>
+                  </tr>
+                  
+                  <!-- EXPANDABLE DETAILS ROW -->
+                  <tr id="details-{{ contrato.id }}" class="details-row" style="display: none; background: var(--surface-muted);">
+                    <td colspan="6" style="padding: 16px;">
+                      <div style="padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 0px;">
+                        <h4 style="margin: 0 0 12px 0; font-family: Sora, sans-serif;">Rastro de Auditoria Completo (CNPJs Encontrados no Processo)</h4>
+                        {% if contrato.auditoria %}
+                          <div class="table-card" style="border-radius: 0; margin-top: 8px;">
+                            <table style="width: 100%; font-size: 12px;">
+                              <thead>
+                                <tr>
+                                  <th>CNPJ</th>
+                                  <th>Nome da Empresa</th>
+                                  <th>Origem / Proveniência</th>
+                                  <th>Disposição</th>
+                                  <th>Motivo / Raciocínio</th>
+                                  <th>Situação Cadastral</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {% for item in contrato.auditoria %}
+                                  <tr>
+                                    <td><code>{{ item.cnpj }}</code></td>
+                                    <td>{{ item.nome or '<span class="muted">Não identificado</span>' }}</td>
+                                    <td>
+                                      <strong>{{ 'Estruturada (PNCP)' if item.source == 'estruturada' else 'Ata em PDF' }}</strong>
+                                      {% if item.origin_file %}
+                                        <br><span class="muted" style="font-size: 10px;">Arquivo: {{ item.origin_file }}</span>
+                                      {% endif %}
+                                    </td>
+                                    <td><span class="pill">{{ item.disposition_label }}</span></td>
+                                    <td><small class="muted">{{ item.reason_label }}</small></td>
+                                    <td>
+                                      {% if item.situacao_cadastral %}
+                                        <span class="pill {% if item.situacao_cadastral == 'ATIVA' %}success{% endif %}">{{ item.situacao_cadastral }}</span>
+                                      {% else %}
+                                        <span class="muted">-</span>
+                                      {% endif %}
+                                    </td>
+                                  </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        {% else %}
+                          <p class="muted" style="margin: 0;">Nenhum registro de auditoria disponível para este edital.</p>
+                        {% endif %}
+                      </div>
                     </td>
                   </tr>
                 {% endfor %}
@@ -192,29 +360,135 @@
     </section>
   </section>
 
+  <!-- Metrics Detail Modal -->
+  <div id="metric-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;">
+    <div class="modal-content" style="background: var(--surface); border: 2px solid var(--border); padding: 24px; max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto; position: relative; border-radius: 0px; box-shadow: none;">
+      <button onclick="closeModal()" style="position: absolute; top: 12px; right: 12px; border: 1px solid var(--border); background: var(--surface-strong); color: var(--text); cursor: pointer; padding: 6px 12px; font-weight: bold; border-radius: 0px;">X</button>
+      <h3 id="modal-title" style="margin-top: 0; font-family: Sora, sans-serif; border-bottom: 2px solid var(--border); padding-bottom: 8px;">Detalhamento</h3>
+      <div id="modal-body" class="table-card" style="margin-top: 16px;">
+        <!-- Dynamic content goes here -->
+      </div>
+    </div>
+  </div>
+
   <script>
     const form = document.querySelector("#analysis-form");
     const statusEl = document.querySelector("#analysis-status");
+    const submitBtn = form.querySelector("button[type='submit']");
+    const progressContainer = document.getElementById("progress-container");
+    const progressBar = document.getElementById("progress-bar");
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      
+      // Disable form inputs to prevent double submits
+      submitBtn.disabled = true;
+      form.querySelectorAll("input, select").forEach(el => el.disabled = true);
       statusEl.textContent = "Criando análise...";
+      
+      // Reset & show progress bar
+      progressContainer.style.display = "block";
+      progressBar.style.width = "0%";
+
       const response = await fetch("/analises", { method: "POST", body: new FormData(form) });
       const payload = await response.json();
       const runId = payload.run_id;
+      
       const poll = async () => {
         const statusResponse = await fetch(`/analises/${runId}/status`);
         const status = await statusResponse.json();
         const labels = { queued: "Na fila", running: "Em execução", done: "Concluída", error: "Erro" };
+        
         statusEl.textContent = `${labels[status.status] || status.status}: ${status.message}`;
+        if (status.progress !== undefined) {
+          progressBar.style.width = `${status.progress}%`;
+        }
+        
         if (status.status === "done") {
           window.location.href = `/analises/${runId}?uf=${form.uf.value}`;
         } else if (status.status === "error") {
           statusEl.textContent = status.error || status.message;
+          // Re-enable form
+          submitBtn.disabled = false;
+          form.querySelectorAll("input, select").forEach(el => el.disabled = false);
         } else {
           setTimeout(poll, 1200);
         }
       };
       poll();
     });
+
+    // Expand / collapse contract details row
+    function toggleContractDetails(id) {
+      const detailsRow = document.getElementById(`details-${id}`);
+      const row = document.querySelector(`.contract-row[data-id="${id}"]`);
+      const btn = row.querySelector('.expand-btn');
+      
+      if (detailsRow.style.display === 'none') {
+        detailsRow.style.display = 'table-row';
+        btn.textContent = '-';
+      } else {
+        detailsRow.style.display = 'none';
+        btn.textContent = '+';
+      }
+    }
+
+    // Capture metric link clicks and display in modal
+    document.querySelectorAll("a.metric").forEach(link => {
+      link.addEventListener("click", async (event) => {
+        const href = link.getAttribute("href");
+        if (!href || href === "#") return;
+        event.preventDefault();
+        
+        const titleText = link.querySelector("span").textContent;
+        document.getElementById("modal-title").textContent = `Detalhamento: ${titleText}`;
+        const bodyEl = document.getElementById("modal-body");
+        bodyEl.innerHTML = "<p>Carregando registros de auditoria...</p>";
+        document.getElementById("metric-modal").style.display = "flex";
+        
+        try {
+          const res = await fetch(href);
+          const data = await res.json();
+          if (!data.cnpjs || data.cnpjs.length === 0) {
+            bodyEl.innerHTML = "<p class='muted' style='padding: 12px;'>Nenhum CNPJ registrado neste estágio.</p>";
+            return;
+          }
+          
+          let html = `<table>
+            <thead>
+              <tr>
+                <th>CNPJ</th>
+                <th>Nome da Empresa</th>
+                <th>Origem</th>
+                <th>Situação Cadastral</th>
+              </tr>
+            </thead>
+            <tbody>`;
+            
+          data.cnpjs.forEach(c => {
+            const sit = c.situacao_cadastral || "-";
+            const sourceText = c.source === 'ata' ? 'PDF da Ata' : 'Estruturada (PNCP)';
+            html += `<tr>
+              <td><code>${c.cnpj}</code></td>
+              <td>${c.nome || '<span class="muted">Não identificado</span>'}</td>
+              <td>
+                <strong>${sourceText}</strong>
+                ${c.origin_file ? `<br><span class="muted" style="font-size: 10px;">Arq: ${c.origin_file}</span>` : ''}
+              </td>
+              <td><span class="pill ${sit === 'ATIVA' ? 'success' : ''}">${sit}</span></td>
+            </tr>`;
+          });
+          
+          html += `</tbody></table>`;
+          bodyEl.innerHTML = html;
+        } catch (err) {
+          bodyEl.innerHTML = `<p class='danger' style='padding: 12px;'>Falha ao carregar registros: ${err}</p>`;
+        }
+      });
+    });
+
+    function closeModal() {
+      document.getElementById("metric-modal").style.display = "none";
+    }
   </script>
 {% endblock %}

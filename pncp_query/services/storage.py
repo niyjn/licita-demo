@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS contratos (
     data_publicacao TEXT,
     status TEXT NOT NULL DEFAULT 'final',
     motivo_status TEXT NOT NULL DEFAULT '',
+    item_url TEXT NOT NULL DEFAULT '',
     UNIQUE (run_id, numero_controle)
 );
 
@@ -49,6 +50,7 @@ CREATE TABLE IF NOT EXISTS participantes (
     nome TEXT,
     papel TEXT NOT NULL,            -- 'adjudicatario' ou 'participante'
     valor_homologado REAL,
+    situacao_cadastral TEXT NOT NULL DEFAULT '',
     UNIQUE (contrato_id, cnpj)
 );
 
@@ -62,6 +64,7 @@ CREATE TABLE IF NOT EXISTS cnpjs_auditoria (
     disposition TEXT NOT NULL,
     reason TEXT NOT NULL DEFAULT '',
     origin_file TEXT NOT NULL DEFAULT '',
+    situacao_cadastral TEXT NOT NULL DEFAULT '',
     UNIQUE (run_id, contrato_id, cnpj, disposition)
 );
 
@@ -69,6 +72,7 @@ CREATE TABLE IF NOT EXISTS metricas_funil (
     contrato_id INTEGER PRIMARY KEY REFERENCES contratos(id) ON DELETE CASCADE,
     run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
     atas_lidas INTEGER NOT NULL DEFAULT 0,
+    atas_falhas INTEGER NOT NULL DEFAULT 0,
     cnpjs_ata_unicos INTEGER NOT NULL DEFAULT 0,
     removido_invalido INTEGER NOT NULL DEFAULT 0,
     removido_orgao INTEGER NOT NULL DEFAULT 0,
@@ -180,13 +184,14 @@ class Storage:
                 """
                 INSERT INTO contratos
                     (run_id, numero_controle, orgao_cnpj, orgao_nome, uf, municipio,
-                     ano, sequencial, objeto, valor, data_publicacao, status, motivo_status)
+                     ano, sequencial, objeto, valor, data_publicacao, status, motivo_status, item_url)
                 VALUES (:run_id, :numero_controle, :orgao_cnpj, :orgao_nome, :uf, :municipio,
-                        :ano, :sequencial, :objeto, :valor, :data_publicacao, :status, :motivo_status)
+                        :ano, :sequencial, :objeto, :valor, :data_publicacao, :status, :motivo_status, :item_url)
                 ON CONFLICT(run_id, numero_controle) DO UPDATE SET
                     run_id=excluded.run_id, orgao_nome=excluded.orgao_nome,
                     objeto=excluded.objeto, valor=excluded.valor,
-                    status=excluded.status, motivo_status=excluded.motivo_status
+                    status=excluded.status, motivo_status=excluded.motivo_status,
+                    item_url=excluded.item_url
                 """,
                 contrato_normalizado,
             )
@@ -196,13 +201,14 @@ class Storage:
             for p in participantes:
                 conn.execute(
                     """
-                    INSERT INTO participantes (contrato_id, cnpj, nome, papel, valor_homologado)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO participantes (contrato_id, cnpj, nome, papel, valor_homologado, situacao_cadastral)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(contrato_id, cnpj) DO UPDATE SET
                         nome=excluded.nome, papel=excluded.papel,
-                        valor_homologado=excluded.valor_homologado
+                        valor_homologado=excluded.valor_homologado,
+                        situacao_cadastral=excluded.situacao_cadastral
                     """,
-                    (contrato_id, p["cnpj"], p.get("nome", ""), p["papel"], p.get("valor_homologado")),
+                    (contrato_id, p["cnpj"], p.get("nome", ""), p["papel"], p.get("valor_homologado"), p.get("situacao_cadastral", "")),
                 )
             return contrato_id
 
@@ -212,11 +218,12 @@ class Storage:
                 conn.execute(
                     """
                     INSERT INTO cnpjs_auditoria
-                        (run_id, contrato_id, cnpj, nome, source, disposition, reason, origin_file)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        (run_id, contrato_id, cnpj, nome, source, disposition, reason, origin_file, situacao_cadastral)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(run_id, contrato_id, cnpj, disposition) DO UPDATE SET
                         nome=excluded.nome, source=excluded.source,
-                        reason=excluded.reason, origin_file=excluded.origin_file
+                        reason=excluded.reason, origin_file=excluded.origin_file,
+                        situacao_cadastral=excluded.situacao_cadastral
                     """,
                     (
                         run_id,
@@ -227,12 +234,14 @@ class Storage:
                         registro["disposition"],
                         registro.get("reason", ""),
                         registro.get("origin_file", ""),
+                        registro.get("situacao_cadastral", ""),
                     ),
                 )
 
     def salvar_metricas_funil(self, contrato_id, run_id, metricas):
         valores = {
             "atas_lidas": 0,
+            "atas_falhas": 0,
             "cnpjs_ata_unicos": 0,
             "removido_invalido": 0,
             "removido_orgao": 0,
@@ -246,14 +255,15 @@ class Storage:
             conn.execute(
                 """
                 INSERT INTO metricas_funil
-                    (contrato_id, run_id, atas_lidas, cnpjs_ata_unicos,
+                    (contrato_id, run_id, atas_lidas, atas_falhas, cnpjs_ata_unicos,
                      removido_invalido, removido_orgao, removido_vencedor,
                      perdedores_final, vencedores, resultado_final)
-                VALUES (:contrato_id, :run_id, :atas_lidas, :cnpjs_ata_unicos,
+                VALUES (:contrato_id, :run_id, :atas_lidas, :atas_falhas, :cnpjs_ata_unicos,
                         :removido_invalido, :removido_orgao, :removido_vencedor,
                         :perdedores_final, :vencedores, :resultado_final)
                 ON CONFLICT(contrato_id) DO UPDATE SET
                     atas_lidas=excluded.atas_lidas,
+                    atas_falhas=excluded.atas_falhas,
                     cnpjs_ata_unicos=excluded.cnpjs_ata_unicos,
                     removido_invalido=excluded.removido_invalido,
                     removido_orgao=excluded.removido_orgao,
@@ -281,6 +291,7 @@ class Storage:
                 """
                 SELECT
                     COALESCE(SUM(atas_lidas), 0) AS atas_lidas,
+                    COALESCE(SUM(atas_falhas), 0) AS atas_falhas,
                     COALESCE(SUM(cnpjs_ata_unicos), 0) AS cnpjs_ata_unicos,
                     COALESCE(SUM(removido_invalido), 0) AS removido_invalido,
                     COALESCE(SUM(removido_orgao), 0) AS removido_orgao,
@@ -328,8 +339,16 @@ class Storage:
                 contrato["participantes"] = [
                     dict(r)
                     for r in conn.execute(
-                        "SELECT cnpj, nome, papel, valor_homologado FROM participantes "
+                        "SELECT cnpj, nome, papel, valor_homologado, situacao_cadastral FROM participantes "
                         "WHERE contrato_id = ? ORDER BY papel ASC, nome ASC",
+                        (contrato["id"],),
+                    ).fetchall()
+                ]
+                contrato["auditoria"] = [
+                    dict(r)
+                    for r in conn.execute(
+                        "SELECT cnpj, nome, source, disposition, reason, origin_file, situacao_cadastral FROM cnpjs_auditoria "
+                        "WHERE contrato_id = ? ORDER BY disposition ASC, cnpj ASC",
                         (contrato["id"],),
                     ).fetchall()
                 ]
@@ -345,5 +364,6 @@ def _contrato_defaults(contrato):
         "run_id": None,
         "status": "final",
         "motivo_status": "",
+        "item_url": "",
         **contrato,
     }

@@ -78,9 +78,20 @@ def create_app(config=None):
         return _render_dashboard(db_path, run)
 
     def _render_dashboard(db_path, run):
-        uf = request.args.get("uf") or "SP"
-        if uf not in UFS:
+        import json
+        run_params = None
+        if run and run.get("params_json"):
+            try:
+                run_params = json.loads(run["params_json"])
+            except Exception:
+                pass
+
+        uf = request.args.get("uf")
+        if not uf and run_params:
+            uf = run_params.get("uf")
+        if not uf or uf not in UFS:
             uf = "SP"
+
         incluir_ocultos = request.args.get("mostrar") == "ocultos"
         contratos = _listar_contratos(db_path, uf, run_id=run["id"] if run else None, incluir_ocultos=incluir_ocultos)
         resumo = _resumo_run(db_path, run) if run else _resumo_contratos(contratos)
@@ -94,6 +105,7 @@ def create_app(config=None):
             contratos=[_contrato_view(contrato) for contrato in contratos],
             resumo=resumo,
             run=run,
+            run_params=run_params,
             incluir_ocultos=incluir_ocultos,
             documentos=documentos,
         )
@@ -127,6 +139,34 @@ def create_app(config=None):
                 "error": run["error"],
             }
         )
+
+    @app.get("/analises/<run_id>/exportar")
+    def exportar_analise(run_id):
+        storage = Storage(app.config["DB_PATH"])
+        run = storage.obter_run(run_id)
+        if not run:
+            return jsonify({"error": "run_not_found"}), 404
+        
+        contratos = storage.listar_contratos(run_id=run_id, incluir_ocultos=True)
+        auditorias = storage.listar_cnpjs_auditoria(run_id)
+        
+        # Mapear portal_url para os contratos na exportação também
+        for c in contratos:
+            cnpj_limpo = re.sub(r"\D", "", c.get("orgao_cnpj") or "")
+            c["portal_url"] = f"https://pncp.gov.br/app/editais/{cnpj_limpo}/{c.get('ano')}/{c.get('sequencial')}"
+            
+        dados = {
+            "run": run,
+            "contratos": contratos,
+            "auditorias": auditorias
+        }
+        
+        from flask import make_response
+        import json
+        resposta = make_response(json.dumps(dados, indent=2, ensure_ascii=False))
+        resposta.headers["Content-Disposition"] = f"attachment; filename=analise-pncp-{run_id}.json"
+        resposta.headers["Content-Type"] = "application/json"
+        return resposta
 
     @app.get("/healthz")
     def healthz():
@@ -173,6 +213,16 @@ def _contrato_view(contrato):
     contrato["perdedores"] = [p for p in contrato.get("participantes", []) if p.get("papel") != "adjudicatario"]
     contrato["status_label"] = STATUS_LABELS.get(contrato.get("status"), contrato.get("status", ""))
     contrato["motivo_status_label"] = _rotulo_motivo(contrato.get("motivo_status"))
+    
+    # URL oficial do portal do PNCP para o edital
+    cnpj_limpo = re.sub(r"\D", "", contrato.get("orgao_cnpj") or "")
+    contrato["portal_url"] = f"https://pncp.gov.br/app/editais/{cnpj_limpo}/{contrato.get('ano')}/{contrato.get('sequencial')}"
+    
+    # Rótulos para os registros de auditoria do contrato
+    for item in contrato.get("auditoria", []):
+        item["disposition_label"] = DISPOSITION_LABELS.get(item.get("disposition"), item.get("disposition", ""))
+        item["reason_label"] = _rotulo_motivo(item.get("reason"))
+        
     return contrato
 
 
