@@ -14,6 +14,9 @@ RUN apt-get update \
 
 RUN useradd -m -u 1000 appuser
 
+RUN mkdir -p /app/output && chown -R appuser:appuser /app/output
+VOLUME /app/output
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

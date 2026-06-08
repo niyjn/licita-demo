@@ -6,8 +6,23 @@ from dateutil.relativedelta import relativedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = BASE_DIR / "output"
-PDF_DIR = OUTPUT_DIR / "pdfs"
-DB_PATH = Path(os.getenv("DB_PATH", OUTPUT_DIR / "analise.db"))
+
+# Try to write to OUTPUT_DIR, fallback to user home directory if not writable (e.g., Docker volume permission issues)
+_db_default = OUTPUT_DIR / "analise.db"
+_pdf_default = OUTPUT_DIR / "pdfs"
+
+try:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    _test_file = OUTPUT_DIR / ".write_test"
+    _test_file.touch()
+    _test_file.unlink()
+except Exception:
+    # Fallback to user home directory (always writable by the running user)
+    _db_default = Path.home() / "analise.db"
+    _pdf_default = Path.home() / "pdfs"
+
+DB_PATH = Path(os.getenv("DB_PATH", _db_default))
+PDF_DIR = Path(os.getenv("PDF_DIR", _pdf_default))
 
 
 def _carregar_env_local():
