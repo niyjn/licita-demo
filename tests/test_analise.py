@@ -149,3 +149,32 @@ def test_funil_remove_orgao_comprador_por_cnpj_raiz():
     assert auditoria["metricas"]["cnpjs_ata_unicos"] == 1
     assert auditoria["metricas"]["removido_orgao"] == 1
     assert auditoria["registros"][0]["disposition"] == "removido_orgao"
+
+
+def test_motivo_descarte_identifica_dispensa_e_inexigibilidade():
+    # Test match with title
+    linha_dispensa = {
+        "modalidade_licitacao_nome": "Pregão Eletrônico",
+        "title": "Dispensa de licitação para compra emergencial",
+        "description": "Aquisição de insumos",
+        "situacao_nome": "Homologada"
+    }
+    assert analise._motivo_descarte(linha_dispensa) == "contratacao_direta_ou_exclusividade:dispensa"
+
+    # Test match with modalidade_licitacao_nome
+    linha_inexigibilidade = {
+        "modalidade_licitacao_nome": "Inexigibilidade",
+        "title": "Compra de software proprietário",
+        "description": "Contratação direta",
+        "situacao_nome": "Homologada"
+    }
+    assert analise._motivo_descarte(linha_inexigibilidade) == "contratacao_direta_ou_exclusividade:inexigibilidade"
+
+    # Test no match
+    linha_valida = {
+        "modalidade_licitacao_nome": "Concorrência",
+        "title": "Aquisição de computadores",
+        "description": "Ampla concorrência para TI",
+        "situacao_nome": "Homologada"
+    }
+    assert analise._motivo_descarte(linha_valida) == ""
