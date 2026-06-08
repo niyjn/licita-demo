@@ -14,7 +14,7 @@
           <span>Área</span>
           <select name="area">
             {% for area in areas %}
-              <option value="{{ area }}">{{ area }}</option>
+              <option value="{{ area.value }}">{{ area.label }}</option>
             {% endfor %}
           </select>
         </label>
@@ -124,8 +124,8 @@
                       {% for registro in documento.registros %}
                         <tr>
                           <td>{{ registro.cnpj }}</td>
-                          <td>{{ registro.disposition }}</td>
-                          <td>{{ registro.reason }}</td>
+                          <td>{{ registro.disposition_label }}</td>
+                          <td>{{ registro.reason_label }}</td>
                         </tr>
                       {% endfor %}
                     </tbody>
@@ -173,8 +173,8 @@
                     <td>{{ contrato.vencedores|map(attribute='nome')|join(', ') or contrato.vencedores|length }}</td>
                     <td>{{ contrato.perdedores|map(attribute='nome')|join(', ') or contrato.perdedores|length }}</td>
                     <td>
-                      <span class="pill">{{ contrato.status }}</span>
-                      {% if contrato.motivo_status %}<br><span class="muted">{{ contrato.motivo_status }}</span>{% endif %}
+                      <span class="pill">{{ contrato.status_label }}</span>
+                      {% if contrato.motivo_status_label %}<br><span class="muted">{{ contrato.motivo_status_label }}</span>{% endif %}
                     </td>
                   </tr>
                 {% endfor %}
@@ -204,7 +204,8 @@
       const poll = async () => {
         const statusResponse = await fetch(`/analises/${runId}/status`);
         const status = await statusResponse.json();
-        statusEl.textContent = `${status.status}: ${status.message}`;
+        const labels = { queued: "Na fila", running: "Em execução", done: "Concluída", error: "Erro" };
+        statusEl.textContent = `${labels[status.status] || status.status}: ${status.message}`;
         if (status.status === "done") {
           window.location.href = `/analises/${runId}?uf=${form.uf.value}`;
         } else if (status.status === "error") {

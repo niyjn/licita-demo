@@ -20,6 +20,8 @@ def test_index_renderiza_frontend_com_design_system(tmp_path):
     assert "Análise PNCP".encode() in response.data
     assert b"/design-system/tokens.css" in response.data
     assert "Funil reconciliável".encode() in response.data
+    assert "Saúde".encode() in response.data
+    assert "Em execução".encode() in response.data
     assert b"analysis-layout" in response.data
 
 
@@ -150,6 +152,9 @@ def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(tmp_path):
     assert b"Atas e editais lidos" in response.data
     assert b"ata-final.pdf" in response.data
     assert b"11444777000161" in response.data
+    assert b"Perdedor final" in response.data
+    assert "CNPJ válido da ata".encode() in response.data
+    assert b"Final" in response.data
     assert "Órgão Final".encode() in response.data
     assert "Órgão Vazio".encode() not in response.data
     assert b"Software" in response.data

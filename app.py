@@ -10,6 +10,36 @@ from analise import analisar
 from pncp_query.config import AREAS, DB_PATH, UFS, janela_padrao
 from pncp_query.services.storage import Storage
 
+AREA_LABELS = {
+    "TI": "TI",
+    "ENGENHARIA": "Engenharia",
+    "SAUDE": "Saúde",
+}
+
+DISPOSITION_LABELS = {
+    "perdedor_final": "Perdedor final",
+    "removido_invalido": "Removido por dígito inválido",
+    "removido_orgao": "Removido por órgão comprador",
+    "removido_vencedor": "Removido por vencedor",
+    "vencedor": "Vencedor",
+}
+
+REASON_LABELS = {
+    "cnpj_valido_da_ata": "CNPJ válido da ata",
+    "coincidente_com_vencedor": "Coincide com vencedor",
+    "digito_verificador_invalido": "Dígito verificador inválido",
+    "orgao_comprador": "Órgão comprador",
+    "resultado_pncp_estruturado": "Resultado estruturado do PNCP",
+    "sem_perdedores_na_ata": "Sem perdedores na ata",
+    "sem_vencedor_estruturado": "Sem vencedor estruturado",
+}
+
+STATUS_LABELS = {
+    "descartado": "Descartado",
+    "final": "Final",
+    "vazio": "Vazio",
+}
+
 
 def create_app(config=None):
     app = Flask(
@@ -57,7 +87,7 @@ def create_app(config=None):
         documentos = _documentos_extraidos(db_path, run["id"]) if run else []
         return render_template(
             "index.html",
-            areas=AREAS,
+            areas=[{"value": area, "label": AREA_LABELS.get(area, area)} for area in AREAS],
             ufs=UFS,
             uf_atual=uf,
             periodo_padrao=janela_padrao(),
@@ -141,6 +171,8 @@ def _contrato_view(contrato):
     contrato["titulo_limpo"] = _titulo_limpo(contrato)
     contrato["vencedores"] = [p for p in contrato.get("participantes", []) if p.get("papel") == "adjudicatario"]
     contrato["perdedores"] = [p for p in contrato.get("participantes", []) if p.get("papel") != "adjudicatario"]
+    contrato["status_label"] = STATUS_LABELS.get(contrato.get("status"), contrato.get("status", ""))
+    contrato["motivo_status_label"] = _rotulo_motivo(contrato.get("motivo_status"))
     return contrato
 
 
@@ -152,6 +184,12 @@ def _documentos_extraidos(db_path, run_id):
         arquivos = [item.strip() for item in (registro.get("origin_file") or "Ata sem nome").split(",") if item.strip()]
         for arquivo in arquivos:
             documento = documentos.setdefault(arquivo, {"arquivo": arquivo, "registros": []})
+            registro = dict(registro)
+            registro["disposition_label"] = DISPOSITION_LABELS.get(
+                registro.get("disposition"),
+                registro.get("disposition", ""),
+            )
+            registro["reason_label"] = _rotulo_motivo(registro.get("reason"))
             documento["registros"].append(registro)
     return sorted(documentos.values(), key=lambda item: item["arquivo"])
 
@@ -197,7 +235,9 @@ def _acentuar_termos_comuns(texto):
         "contratacao": "contratação",
         "exibicao": "exibição",
         "gestao": "gestão",
+        "inviabilidade de competicao": "inviabilidade de competição",
         "municipio": "município",
+        "notoria especializacao": "notória especialização",
         "orgao": "órgão",
         "publica": "pública",
         "publico": "público",
@@ -207,6 +247,17 @@ def _acentuar_termos_comuns(texto):
     for origem, destino in termos.items():
         texto = re.sub(rf"\b{origem}\b", destino, texto, flags=re.IGNORECASE)
     return texto
+
+
+def _rotulo_motivo(motivo):
+    if not motivo:
+        return ""
+    if motivo in REASON_LABELS:
+        return REASON_LABELS[motivo]
+    if motivo.startswith("contratacao_direta_ou_exclusividade:"):
+        termo = motivo.split(":", 1)[1].replace("_", " ")
+        return f"Contratação direta ou exclusividade: {_acentuar_termos_comuns(termo)}"
+    return _acentuar_termos_comuns(str(motivo).replace("_", " "))
 
 
 def _payload_analise():
