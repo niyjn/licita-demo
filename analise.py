@@ -183,9 +183,14 @@ def _montar_auditoria(adjudicatarios, cnpjs_ata, orgao_cnpj, enrichment, cnpjs_o
     restantes -= removido_vencedor
     perdedores_final = restantes
 
-    assert len(cnpjs_ata_unicos) == (
+    expected_sum = (
         len(removido_invalido) + len(removido_orgao) + len(removido_vencedor) + len(perdedores_final)
     )
+    if len(cnpjs_ata_unicos) != expected_sum:
+        raise ValueError(
+            f"Erro de consistência no funil: total único {len(cnpjs_ata_unicos)} "
+            f"não coincide com a soma das partes ({expected_sum})"
+        )
 
     for disposition, cnpjs, reason in (
         ("removido_invalido", removido_invalido, "digito_verificador_invalido"),
