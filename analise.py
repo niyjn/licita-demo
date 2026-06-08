@@ -246,6 +246,7 @@ def _registro_ata(cnpj, disposition, reason, cnpjs_origem, situacao_cadastral=""
         "disposition": disposition,
         "reason": reason,
         "origin_file": ",".join(sorted(cnpjs_origem.get(cnpj, []))),
+        "situacao_cadastral": situacao_cadastral,
     }
 
 
