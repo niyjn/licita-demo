@@ -6,9 +6,22 @@ Modela contratos e seus participantes (adjudicatario + demais participantes).
 
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS runs (
+    id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    progress REAL NOT NULL DEFAULT 0,
+    message TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    params_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS contratos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     numero_controle TEXT UNIQUE,
@@ -47,6 +60,8 @@ class Storage:
     def connect(self):
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA foreign_keys = ON")
         try:
             yield conn
@@ -57,6 +72,51 @@ class Storage:
     def init_db(self):
         with self.connect() as conn:
             conn.executescript(SCHEMA)
+
+    def criar_run(self, run_id, params_json="{}"):
+        now = _now()
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO runs (id, status, progress, message, params_json, created_at)
+                VALUES (?, 'queued', 0, 'Analise na fila.', ?, ?)
+                """,
+                (run_id, params_json, now),
+            )
+        return run_id
+
+    def atualizar_run(self, run_id, status=None, progress=None, message=None, error=None):
+        updates = []
+        params = []
+        if status is not None:
+            updates.append("status = ?")
+            params.append(status)
+            if status == "running":
+                updates.append("started_at = COALESCE(started_at, ?)")
+                params.append(_now())
+            if status in {"done", "error"}:
+                updates.append("finished_at = ?")
+                params.append(_now())
+        if progress is not None:
+            updates.append("progress = ?")
+            params.append(float(progress))
+        if message is not None:
+            updates.append("message = ?")
+            params.append(str(message))
+        if error is not None:
+            updates.append("error = ?")
+            params.append(str(error))
+        if not updates:
+            return
+
+        params.append(run_id)
+        with self.connect() as conn:
+            conn.execute(f"UPDATE runs SET {', '.join(updates)} WHERE id = ?", params)
+
+    def obter_run(self, run_id):
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+            return dict(row) if row else None
 
     def salvar_contrato(self, contrato, participantes):
         """contrato: dict com chaves do schema; participantes: lista de dicts."""
@@ -112,3 +172,7 @@ class Storage:
                     ).fetchall()
                 ]
             return contratos
+
+
+def _now():
+    return datetime.now().isoformat(timespec="seconds")
