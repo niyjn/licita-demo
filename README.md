@@ -120,3 +120,9 @@ O projeto passou por uma auditoria completa e recebeu as seguintes melhorias par
 4. **Testes Unitários**:
    - Adicionada suíte de testes unitários para o parser de atas (`pdf_parser_service.py`) cobrindo detecção de vencedores, proximidade espacial e conversão.
    - Adicionados testes para a heurística de descarte direto (`_motivo_descarte`) de dispensas e inexigibilidades.
+
+5. **Infraestrutura e Resiliência**:
+   - **Resiliência do SQLite**: Mecanismo de fallback dinâmico no `config.py` que detecta falhas de escrita/permissão no diretório `/app/output` (comum ao usar volumes Docker pertencentes ao root), redirecionando automaticamente o banco e os downloads de PDF para a pasta home segura do usuário (`/home/appuser/`).
+
+6. **Nova Visualização Interativa**:
+   - **Mapa de Contratos**: Exibição na parte inferior da página de um grid de quadradinhos correspondentes aos contratos analisados (coloridos conforme o status). Ao clicar, o quadradinho expande um painel inline de detalhes ("quadradão"), mostrando órgão, localidade, valores, vencedores estruturados e perdedores das atas.
