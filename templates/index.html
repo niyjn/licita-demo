@@ -435,6 +435,25 @@
       }
     }
 
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/`/g, '&#96;');
+    }
+
+    function validarNome(input) {
+      return /^[a-zA-Z0-9 ]+$/.test(input);
+    }
+
+    function temCaracteresSuspeitos(input) {
+      return /<|>|"|'|`/.test(input);
+    }
+
     // Capture metric link clicks and display in modal
     document.querySelectorAll("a.metric").forEach(link => {
       link.addEventListener("click", async (event) => {
@@ -468,14 +487,22 @@
             <tbody>`;
             
           data.cnpjs.forEach(c => {
-            const sit = c.situacao_cadastral || "-";
+            const sit = escapeHtml(c.situacao_cadastral || "-");
             const sourceText = c.source === 'ata' ? 'PDF da Ata' : 'Estruturada (PNCP)';
+            const escapedNome = c.nome ? escapeHtml(c.nome) : '<span class="muted">Não identificado</span>';
+            const escapedCnpj = escapeHtml(c.cnpj);
+            
+            // Log verification or suspicion if needed
+            if (c.nome && temCaracteresSuspeitos(c.nome)) {
+              console.warn("Suspected name detected:", c.nome);
+            }
+
             html += `<tr>
-              <td><code>${c.cnpj}</code></td>
-              <td>${c.nome || '<span class="muted">Não identificado</span>'}</td>
+              <td><code>${escapedCnpj}</code></td>
+              <td>${escapedNome}</td>
               <td>
                 <strong>${sourceText}</strong>
-                ${c.origin_file ? `<br><span class="muted" style="font-size: 10px;">Arq: ${c.origin_file}</span>` : ''}
+                ${c.origin_file ? `<br><span class="muted" style="font-size: 10px;">Arq: ${escapeHtml(c.origin_file)}</span>` : ''}
               </td>
               <td><span class="pill ${sit === 'ATIVA' ? 'success' : ''}">${sit}</span></td>
             </tr>`;
@@ -484,7 +511,7 @@
           html += `</tbody></table>`;
           bodyEl.innerHTML = html;
         } catch (err) {
-          bodyEl.innerHTML = `<p class='danger' style='padding: 12px;'>Falha ao carregar registros: ${err}</p>`;
+          bodyEl.innerHTML = `<p class='danger' style='padding: 12px;'>Falha ao carregar registros: ${escapeHtml(err.message || err)}</p>`;
         }
       });
     });
