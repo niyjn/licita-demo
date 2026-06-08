@@ -1,0 +1,16 @@
+services:
+  web:
+    build: .
+    image: licita-demo:latest
+    container_name: licita_demo_app
+    ports:
+      - "8000:8000"
+    volumes:
+      - licita_data:/app/output
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    restart: unless-stopped
+
+volumes:
+  licita_data:
