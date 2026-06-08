@@ -167,6 +167,11 @@ class Storage:
             row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
             return dict(row) if row else None
 
+    def ultima_run(self):
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM runs ORDER BY created_at DESC LIMIT 1").fetchone()
+            return dict(row) if row else None
+
     def salvar_contrato(self, contrato, participantes):
         """contrato: dict com chaves do schema; participantes: lista de dicts."""
         with self.connect() as conn:
@@ -302,12 +307,20 @@ class Storage:
         ).fetchone()
         return row["id"] if row else None
 
-    def listar_contratos(self, uf=None):
+    def listar_contratos(self, uf=None, run_id=None, incluir_ocultos=True):
         query = "SELECT * FROM contratos"
         params = []
+        filtros = []
+        if run_id:
+            filtros.append("run_id = ?")
+            params.append(run_id)
         if uf:
-            query += " WHERE uf = ?"
+            filtros.append("uf = ?")
             params.append(uf)
+        if not incluir_ocultos:
+            filtros.append("status = 'final'")
+        if filtros:
+            query += " WHERE " + " AND ".join(filtros)
         query += " ORDER BY data_publicacao DESC"
         with self.connect() as conn:
             contratos = [dict(r) for r in conn.execute(query, params).fetchall()]

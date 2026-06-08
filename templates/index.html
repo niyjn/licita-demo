@@ -9,7 +9,7 @@
           <h2>Nova analise</h2>
         </div>
       </div>
-      <form method="post" action="/analises" class="filters">
+      <form id="analysis-form" method="post" action="/analises" class="filters">
         <label class="field">
           <span>Area</span>
           <select name="area">
@@ -40,34 +40,61 @@
         </label>
         <button class="btn btn-primary" type="submit">Analisar</button>
       </form>
+      <p id="analysis-status" class="muted"></p>
     </aside>
 
     <section class="workspace-main">
       <div class="page-header">
         <div>
           <span class="eyebrow">Ultima analise</span>
-          <h1>Resultado por contrato</h1>
+          <h1>Funil reconciliavel</h1>
         </div>
+        {% if run %}
+          <a class="btn btn-secondary" href="{{ url_for('ver_analise', run_id=run.id, uf=uf_atual, mostrar='ocultos' if not incluir_ocultos else None) }}">
+            {% if incluir_ocultos %}Ocultar vazios{% else %}Mostrar vazios{% endif %}
+          </a>
+        {% endif %}
       </div>
 
       <div class="metrics-grid">
-        <div class="metric">
-          <span>Contratos</span>
-          <strong>{{ resumo.contratos }}</strong>
-        </div>
-        <div class="metric">
-          <span>Vencedores</span>
-          <strong>{{ resumo.vencedores }}</strong>
-        </div>
-        <div class="metric">
-          <span>Perdedores</span>
-          <strong>{{ resumo.perdedores }}</strong>
-        </div>
+        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}">
+          <span>Atas lidas</span>
+          <strong>{{ resumo.atas_lidas|default(0) }}</strong>
+        </a>
+        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id) if run else '#' }}">
+          <span>CNPJs unicos das atas</span>
+          <strong>{{ resumo.cnpjs_ata_unicos|default(0) }}</strong>
+        </a>
+        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_invalido') if run else '#' }}">
+          <span>Digito invalido</span>
+          <strong>{{ resumo.removido_invalido|default(0) }}</strong>
+        </a>
+        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_orgao') if run else '#' }}">
+          <span>Orgao comprador</span>
+          <strong>{{ resumo.removido_orgao|default(0) }}</strong>
+        </a>
+        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_vencedor') if run else '#' }}">
+          <span>Coincide com vencedor</span>
+          <strong>{{ resumo.removido_vencedor|default(0) }}</strong>
+        </a>
+        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}">
+          <span>Perdedores finais</span>
+          <strong>{{ resumo.perdedores_final|default(resumo.perdedores|default(0)) }}</strong>
+        </a>
+        <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='vencedor') if run else '#' }}">
+          <span>Vencedores estruturados</span>
+          <strong>{{ resumo.vencedores|default(0) }}</strong>
+        </a>
         <div class="metric">
           <span>Resultado final</span>
-          <strong>{{ resumo.resultado_final }}</strong>
+          <strong>{{ resumo.resultado_final|default(0) }}</strong>
         </div>
       </div>
+
+      <p class="alert">
+        Perdedores sao inferidos dos CNPJs validos encontrados nas atas, apos limpeza.
+        Vencedores vêm da fonte estruturada do PNCP.
+      </p>
 
       {% if contratos %}
         <div class="table-card">
@@ -75,16 +102,26 @@
             <thead>
               <tr>
                 <th>Orgao</th>
-                <th>Objeto</th>
-                <th>Participantes</th>
+                <th>Contrato</th>
+                <th>Vencedores</th>
+                <th>Perdedores</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {% for contrato in contratos %}
                 <tr>
                   <td>{{ contrato.orgao_nome or contrato.orgao_cnpj }}</td>
-                  <td>{{ contrato.objeto or contrato.numero_controle }}</td>
-                  <td>{{ contrato.participantes|length }}</td>
+                  <td>
+                    <strong>{{ contrato.titulo_limpo }}</strong><br>
+                    <span class="muted">{{ contrato.numero_controle }}</span>
+                  </td>
+                  <td>{{ contrato.vencedores|map(attribute='nome')|join(', ') or contrato.vencedores|length }}</td>
+                  <td>{{ contrato.perdedores|map(attribute='nome')|join(', ') or contrato.perdedores|length }}</td>
+                  <td>
+                    <span class="pill">{{ contrato.status }}</span>
+                    {% if contrato.motivo_status %}<br><span class="muted">{{ contrato.motivo_status }}</span>{% endif %}
+                  </td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -93,10 +130,35 @@
       {% else %}
         <div class="blank-state">
           <span class="eyebrow">Sem dados</span>
-          <h2>Nenhum contrato armazenado para {{ uf_atual }}</h2>
-          <p>Execute uma analise para preencher esta visao.</p>
+          <h2>Nenhum contrato final para {{ uf_atual }}</h2>
+          <p>Execute uma analise ou habilite a exibicao de vazios e descartados.</p>
         </div>
       {% endif %}
     </section>
   </section>
+
+  <script>
+    const form = document.querySelector("#analysis-form");
+    const statusEl = document.querySelector("#analysis-status");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      statusEl.textContent = "Criando analise...";
+      const response = await fetch("/analises", { method: "POST", body: new FormData(form) });
+      const payload = await response.json();
+      const runId = payload.run_id;
+      const poll = async () => {
+        const statusResponse = await fetch(`/analises/${runId}/status`);
+        const status = await statusResponse.json();
+        statusEl.textContent = `${status.status}: ${status.message}`;
+        if (status.status === "done") {
+          window.location.href = `/analises/${runId}?uf=${form.uf.value}`;
+        } else if (status.status === "error") {
+          statusEl.textContent = status.error || status.message;
+        } else {
+          setTimeout(poll, 1200);
+        }
+      };
+      poll();
+    });
+  </script>
 {% endblock %}
