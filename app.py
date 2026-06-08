@@ -52,6 +52,13 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
+    # Limpa runs órfãs que ficaram travadas após uma queda ou reinicialização do servidor
+    try:
+        Storage(app.config["DB_PATH"]).limpar_runs_orfas()
+    except Exception as e:
+        import sys
+        print(f"Erro ao limpar runs órfãs no startup: {e}", file=sys.stderr)
+
     @app.get("/")
     def index():
         storage = Storage(app.config["DB_PATH"])
@@ -362,6 +369,10 @@ def _params_json(payload):
 
 def _executar_analise_background(run_id, payload, db_path, analysis_func):
     storage = Storage(db_path)
+    status_final = "done"
+    mensagem_final = "Análise concluída."
+    erro_final = ""
+    
     try:
         storage.atualizar_run(run_id, status="running", progress=0, message="Análise iniciada.")
 
@@ -384,11 +395,24 @@ def _executar_analise_background(run_id, payload, db_path, analysis_func):
             progress=progress,
         )
     except Exception as exc:
-        storage.atualizar_run(run_id, status="error", progress=100, message="Análise falhou.", error=str(exc))
+        status_final = "error"
+        mensagem_final = "Análise falhou."
+        erro_final = str(exc)
     finally:
-        run = storage.obter_run(run_id)
-        if run and run["status"] != "error":
-            storage.atualizar_run(run_id, status="done", progress=100, message="Análise concluída.", error="")
+        try:
+            # Limpa runs travadas de execuções anteriores (mais de 1 hora executando)
+            storage.limpar_runs_travadas(timeout_segundos=3600)
+            
+            storage.atualizar_run(
+                run_id, 
+                status=status_final, 
+                progress=100, 
+                message=mensagem_final, 
+                error=erro_final
+            )
+        except Exception as db_exc:
+            import sys
+            print(f"[CRITICAL] Falha ao gravar status final da run {run_id}: {db_exc}", file=sys.stderr)
 
 
 app = create_app()
