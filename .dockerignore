@@ -1,0 +1,11 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+.env
+venv/
+.venv/
+output/
+Exemplo/
+repomix-output.xml
+to-do-plan.md

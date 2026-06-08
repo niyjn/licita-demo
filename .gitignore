@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+venv/
+.venv/
+
+# Ambiente
+.env
+
+# Dados e saídas (nunca versionar dados coletados)
+output/
+data/*.csv
+*.pdf

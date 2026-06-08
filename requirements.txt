@@ -1,0 +1,7 @@
+requests
+pandas
+python-dateutil
+pdfplumber
+pdf2image
+pytesseract
+psycopg[binary]
