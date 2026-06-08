@@ -349,6 +349,41 @@
               </tbody>
             </table>
           </div>
+
+          <!-- Visual Map Section -->
+          <div class="contracts-map-section" style="margin-top: 40px; padding: 20px; border: 2px solid var(--border); background: var(--surface-muted); border-radius: 0px;">
+            <span class="eyebrow" style="margin-bottom: 8px;">Mapa de Contratos Analisados</span>
+            <h3 style="margin: 0 0 16px 0; font-family: Sora, sans-serif;">Visão Geral do Fluxo</h3>
+            
+            <div class="contracts-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 8px;">
+              {% for contrato in contratos %}
+                <div class="contract-cube" 
+                     data-id="{{ contrato.id }}"
+                     onclick="expandContractCube('{{ contrato.id }}')"
+                     title="{{ contrato.titulo_limpo }} ({{ contrato.status_label }})"
+                     style="aspect-ratio: 1; min-height: 50px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; font-family: Sora, sans-serif; font-size: 14px; position: relative; transition: transform 0.2s ease, border-color 0.2s ease;
+                            {% if contrato.status == 'final' %}
+                              background: var(--success); color: var(--success-text);
+                            {% elif contrato.status == 'vazio' %}
+                              background: var(--warning); color: var(--warning-text);
+                            {% else %}
+                              background: var(--danger); color: var(--danger-text);
+                            {% endif %}">
+                  {{ loop.index }}
+                </div>
+              {% endfor %}
+            </div>
+
+            <!-- Expanded detailed display ("Quadradão") -->
+            <div id="expanded-contract-panel" style="display: none; margin-top: 24px; padding: 20px; border: 2px solid var(--border); background: var(--surface); position: relative; border-radius: 0px;">
+              <button onclick="closeContractCube()" style="position: absolute; top: 12px; right: 12px; background: var(--surface-strong); border: 1px solid var(--border); padding: 4px 10px; cursor: pointer; font-weight: bold; font-size: 12px; border-radius: 0px !important;">
+                FECHAR
+              </button>
+              <div id="expanded-contract-content">
+                <!-- Dynamic content from JS -->
+              </div>
+            </div>
+          </div>
         {% else %}
           <div class="blank-state">
             <span class="eyebrow">Sem dados</span>
@@ -372,6 +407,7 @@
   </div>
 
   <script>
+    const contratosJson = {{ contratos | tojson if contratos else '[]' }};
     const form = document.querySelector("#analysis-form");
     const statusEl = document.querySelector("#analysis-status");
     const submitBtn = form.querySelector("button[type='submit']");
@@ -518,6 +554,95 @@
 
     function closeModal() {
       document.getElementById("metric-modal").style.display = "none";
+    }
+
+    function expandContractCube(id) {
+      const contrato = contratosJson.find(c => String(c.id) === String(id));
+      if (!contrato) return;
+
+      const panel = document.getElementById("expanded-contract-panel");
+      const content = document.getElementById("expanded-contract-content");
+
+      let vencedoresHtml = '';
+      contrato.vencedores.forEach(p => {
+        const sit = escapeHtml(p.situacao_cadastral || "-");
+        vencedoresHtml += `
+          <div style="margin-bottom: 8px; padding: 8px; border: 1px solid var(--border); background: var(--surface-muted); border-radius: 0px;">
+            <strong>${escapeHtml(p.nome || 'Não identificado')}</strong><br>
+            <span class="muted" style="font-size: 11px;">
+              CNPJ: <code>${escapeHtml(p.cnpj)}</code> ${p.situacao_cadastral ? `| Status: <span class="pill ${p.situacao_cadastral === 'ATIVA' ? 'success' : ''}">${sit}</span>` : ''}
+            </span>
+          </div>`;
+      });
+      if (!vencedoresHtml) vencedoresHtml = '<span class="muted">Nenhum vencedor estruturado.</span>';
+
+      let perdedoresHtml = '';
+      contrato.perdedores.forEach(p => {
+        const sit = escapeHtml(p.situacao_cadastral || "-");
+        perdedoresHtml += `
+          <div style="margin-bottom: 8px; padding: 8px; border: 1px solid var(--border); background: var(--surface-muted); border-radius: 0px;">
+            <strong>${escapeHtml(p.nome || 'Não identificado')}</strong><br>
+            <span class="muted" style="font-size: 11px;">
+              CNPJ: <code>${escapeHtml(p.cnpj)}</code> ${p.situacao_cadastral ? `| Status: <span class="pill ${p.situacao_cadastral === 'ATIVA' ? 'success' : ''}">${sit}</span>` : ''}
+            </span>
+          </div>`;
+      });
+      if (!perdedoresHtml) perdedoresHtml = '<span class="muted">Nenhum perdedor identificado em atas.</span>';
+
+      content.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div>
+            <span class="eyebrow">${escapeHtml(contrato.status_label)} ${contrato.motivo_status_label ? `— ${escapeHtml(contrato.motivo_status_label)}` : ''}</span>
+            <h3 style="margin: 4px 0 8px 0; font-family: Sora, sans-serif;">${escapeHtml(contrato.titulo_limpo)}</h3>
+            <span class="muted">
+              <a href="${escapeHtml(contrato.portal_url)}" target="_blank" style="text-decoration: underline; color: var(--primary-strong); font-weight: bold;">
+                Ver edital no Portal PNCP: ${escapeHtml(contrato.numero_controle)}
+              </a>
+            </span>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+              <h4 style="margin: 0 0 10px 0; border-bottom: 2px solid var(--border); padding-bottom: 4px; font-family: Sora, sans-serif;">Vencedores (Estruturados)</h4>
+              ${vencedoresHtml}
+            </div>
+            <div>
+              <h4 style="margin: 0 0 10px 0; border-bottom: 2px solid var(--border); padding-bottom: 4px; font-family: Sora, sans-serif;">Perdedores (Atas em PDF)</h4>
+              ${perdedoresHtml}
+            </div>
+          </div>
+
+          <div style="margin-top: 8px; font-size: 12px; border-top: 1px dashed var(--border-soft); padding-top: 12px;">
+            <strong>Órgão:</strong> ${escapeHtml(contrato.orgao_nome || contrato.orgao_cnpj)} | 
+            <strong>Localidade:</strong> ${escapeHtml(contrato.municipio || '')} / ${escapeHtml(contrato.uf || '')} | 
+            <strong>Valor:</strong> ${escapeHtml(contrato.valor || 'Não informado')} | 
+            <strong>Data de Publicação:</strong> ${escapeHtml(contrato.data_publicacao || '')}
+          </div>
+        </div>
+      `;
+
+      panel.style.display = "block";
+      
+      // Update visual active state on cubes
+      document.querySelectorAll(".contract-cube").forEach(cube => {
+        cube.style.transform = "scale(1)";
+        cube.style.borderColor = "var(--border)";
+      });
+      const activeCube = document.querySelector(`.contract-cube[data-id="${id}"]`);
+      if (activeCube) {
+        activeCube.style.transform = "scale(1.08)";
+        activeCube.style.borderColor = "var(--text)";
+      }
+      
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function closeContractCube() {
+      document.getElementById("expanded-contract-panel").style.display = "none";
+      document.querySelectorAll(".contract-cube").forEach(cube => {
+        cube.style.transform = "scale(1)";
+        cube.style.borderColor = "var(--border)";
+      });
     }
   </script>
 {% endblock %}

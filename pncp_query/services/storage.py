@@ -171,6 +171,35 @@ class Storage:
         with self.connect() as conn:
             conn.execute(f"UPDATE runs SET {', '.join(updates)} WHERE id = ?", params)
 
+    def limpar_runs_orfas(self):
+        """Marca runs que ficaram presas em 'running' ou 'queued' como 'error' (ex: reinicialização do app)."""
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE runs SET status = 'error', message = 'Análise interrompida pelo servidor.', "
+                "error = 'Servidor reiniciado.', finished_at = ? WHERE status IN ('running', 'queued')",
+                (_now(),)
+            )
+
+    def limpar_runs_travadas(self, timeout_segundos=3600):
+        """Marca runs travadas (ex: erro silencioso) há mais de timeout_segundos como 'error'."""
+        with self.connect() as conn:
+            rows = conn.execute("SELECT id, started_at, created_at FROM runs WHERE status IN ('running', 'queued')").fetchall()
+            now = datetime.now()
+            for row in rows:
+                ref_time_str = row["started_at"] or row["created_at"]
+                if not ref_time_str:
+                    continue
+                try:
+                    ref_time = datetime.fromisoformat(ref_time_str)
+                    if (now - ref_time).total_seconds() > timeout_segundos:
+                        conn.execute(
+                            "UPDATE runs SET status = 'error', message = 'Análise excedeu o tempo limite.', "
+                            "error = 'Timeout de processamento.', finished_at = ? WHERE id = ?",
+                            (now.isoformat(timespec="seconds"), row["id"])
+                        )
+                except Exception:
+                    pass
+
     def obter_run(self, run_id):
         with self.connect() as conn:
             row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
