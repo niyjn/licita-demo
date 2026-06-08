@@ -61,11 +61,20 @@ flask --app app run --host 0.0.0.0 --port 8000
 
 Para OCR de PDFs escaneados, instale o [Tesseract](https://github.com/tesseract-ocr/tesseract) e o [Poppler](https://poppler.freedesktop.org/).
 
-### Docker (container único)
+### Docker
+
+#### Container Único (sem persistência simples)
 
 ```bash
 docker build -t licita-demo .
 docker run --rm -p 8000:8000 licita-demo
+# http://localhost:8000
+```
+
+#### Docker Compose (com persistência de banco e PDFs)
+
+```bash
+docker compose up --build
 # http://localhost:8000
 ```
 
