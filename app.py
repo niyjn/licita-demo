@@ -112,7 +112,10 @@ def create_app(config=None):
 
     @app.post("/analises")
     def criar_analise():
-        payload = _payload_analise()
+        try:
+            payload = _payload_analise()
+        except ValueError as e:
+            return jsonify({"error": "invalid_input", "message": str(e)}), 400
         run_id = uuid4().hex
         storage = Storage(app.config["DB_PATH"])
         storage.criar_run(run_id, params_json=_params_json(payload))
@@ -311,16 +314,43 @@ def _rotulo_motivo(motivo):
 
 
 def _payload_analise():
+    from datetime import datetime
     data = request.get_json(silent=True) or request.form
     inicio, fim = janela_padrao()
+    
     area = data.get("area") or "TI"
-    uf = data.get("uf") or "SP"
+    if area not in AREAS:
+        raise ValueError(f"Área inválida: {area}. Opções: {list(AREAS.keys())}")
+        
+    uf = (data.get("uf") or "SP").upper()
+    if uf not in UFS:
+        raise ValueError(f"UF inválido: {uf}")
+        
+    try:
+        limite = int(data.get("limite") or 10)
+        if limite <= 0 or limite > 100:
+            raise ValueError("O limite deve ser entre 1 e 100.")
+    except ValueError:
+        raise ValueError("O limite deve ser um número inteiro válido entre 1 e 100.")
+        
+    data_inicial = data.get("data_inicial") or inicio
+    data_final = data.get("data_final") or fim
+    
+    try:
+        dt_inicio = datetime.strptime(data_inicial, "%Y-%m-%d")
+        dt_fim = datetime.strptime(data_final, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Formato de data inválido. Use YYYY-MM-DD.")
+        
+    if dt_inicio > dt_fim:
+        raise ValueError("A data inicial não pode ser posterior à data final.")
+        
     return {
-        "area": area if area in AREAS else "TI",
-        "data_inicial": data.get("data_inicial") or inicio,
-        "data_final": data.get("data_final") or fim,
-        "uf": uf if uf in UFS else "SP",
-        "limite": int(data.get("limite") or 10),
+        "area": area,
+        "data_inicial": data_inicial,
+        "data_final": data_final,
+        "uf": uf,
+        "limite": limite,
     }
 
 
