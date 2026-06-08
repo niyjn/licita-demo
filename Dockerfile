@@ -12,11 +12,16 @@ RUN apt-get update \
         tesseract-ocr-por \
     && rm -rf /var/lib/apt/lists/*
 
+RUN useradd -m -u 1000 appuser
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+RUN chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 8000
 
-CMD ["gunicorn", "-b", "0.0.0.0:8000", "app:app"]
+CMD ["gunicorn", "-b", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "app:app"]
