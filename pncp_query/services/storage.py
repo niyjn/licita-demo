@@ -4,12 +4,13 @@ Sem servidor: um unico arquivo .db, adequado para rodar em um container.
 Modela contratos e seus participantes (adjudicatario + demais participantes).
 """
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _INITIALIZED_DBS: set[str] = set()
 
@@ -84,6 +85,13 @@ CREATE TABLE IF NOT EXISTS metricas_funil (
     resultado_final INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS perfis_busca (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL UNIQUE,
+    termos_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_contratos_uf ON contratos(uf);
 CREATE INDEX IF NOT EXISTS idx_contratos_run ON contratos(run_id);
 CREATE INDEX IF NOT EXISTS idx_auditoria_run_disposition ON cnpjs_auditoria(run_id, disposition);
@@ -139,6 +147,25 @@ class Storage:
     def criar_run(self, run_id, params_json="{}"):
         now = _now()
         with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO runs (id, status, progress, message, params_json, created_at)
+                VALUES (?, 'queued', 0, 'Análise na fila.', ?, ?)
+                """,
+                (run_id, params_json, now),
+            )
+        return run_id
+
+    def criar_run_se_disponivel(self, run_id, params_json="{}"):
+        """Cria a run somente se não houver outra queued/running."""
+        now = _now()
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            ativa = conn.execute(
+                "SELECT id FROM runs WHERE status IN ('queued', 'running') LIMIT 1"
+            ).fetchone()
+            if ativa:
+                return None
             conn.execute(
                 """
                 INSERT INTO runs (id, status, progress, message, params_json, created_at)
@@ -207,6 +234,63 @@ class Storage:
         with self.connect() as conn:
             row = conn.execute("SELECT * FROM runs ORDER BY created_at DESC LIMIT 1").fetchone()
             return dict(row) if row else None
+
+    def listar_runs(self, limit=20, offset=0, status=None):
+        filtros = []
+        params = []
+        if status:
+            filtros.append("r.status = ?")
+            params.append(status)
+        where = f"WHERE {' AND '.join(filtros)}" if filtros else ""
+        params.extend((max(1, int(limit)), max(0, int(offset))))
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT r.*, COUNT(c.id) AS contratos_count
+                FROM runs r
+                LEFT JOIN contratos c ON c.run_id = r.id
+                {where}
+                GROUP BY r.id
+                ORDER BY r.created_at DESC, r.id DESC
+                LIMIT ? OFFSET ?
+                """,
+                params,
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def contar_runs(self, status=None):
+        query = "SELECT COUNT(*) FROM runs"
+        params = []
+        if status:
+            query += " WHERE status = ?"
+            params.append(status)
+        with self.connect() as conn:
+            return int(conn.execute(query, params).fetchone()[0])
+
+    def excluir_run(self, run_id):
+        with self.connect() as conn:
+            cursor = conn.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+            return cursor.rowcount > 0
+
+    def salvar_perfil(self, nome, termos):
+        with self.connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO perfis_busca (nome, termos_json, created_at) VALUES (?, ?, ?)",
+                (nome, json.dumps(termos, ensure_ascii=False), _now()),
+            )
+            return cursor.lastrowid
+
+    def listar_perfis(self):
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, nome, termos_json, created_at FROM perfis_busca ORDER BY nome COLLATE NOCASE, id"
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def excluir_perfil(self, perfil_id):
+        with self.connect() as conn:
+            cursor = conn.execute("DELETE FROM perfis_busca WHERE id = ?", (perfil_id,))
+            return cursor.rowcount > 0
 
     def salvar_contrato(self, contrato, participantes):
         """contrato: dict com chaves do schema; participantes: lista de dicts."""
