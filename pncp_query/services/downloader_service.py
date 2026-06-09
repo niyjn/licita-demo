@@ -10,7 +10,6 @@ from pncp_query.config import PALAVRAS_ARQUIVO, PALAVRAS_ARQUIVO_EXCLUIR, PALAVR
 from pncp_query.models import ArquivoPNCP
 from pncp_query.services.common import nome_seguro, somente_digitos
 from pncp_query.services.http_client import HttpClient
-from pncp_query.services.qualification_service import QualificationService
 
 FILTER_NORMALIZE_RE = re.compile(r"[^a-z0-9]+")
 NUMERO_CONTROLE_COMPRA_RE = re.compile(r"(?P<cnpj>\d{14})-1-(?P<sequencial>\d+)/(?P<ano>\d{4})")
@@ -30,9 +29,7 @@ class DownloaderService:
         self.session = requests.Session()
         self.session.headers.update({"accept": "application/json", "user-agent": "pncp-query/1.0"})
         self.http = HttpClient(self.session)
-        self.qualifier = QualificationService()
         self._cache_contratos = {}
-        self._cache_compras = {}
         self._cache_arquivos = {}
 
     def listar_arquivos_relevantes(self, linha_licitacao, pdf_dir: Path, chaves_compra=None):
@@ -79,17 +76,6 @@ class DownloaderService:
             return None
 
         return orgao_cnpj, ano, numero
-
-    def qualificar_compra(self, linha_licitacao, chaves_compra):
-        textos = [
-            linha_licitacao.get("termo_busca", ""),
-            linha_licitacao.get("title", ""),
-            linha_licitacao.get("description", ""),
-            linha_licitacao.get("modalidade_licitacao_nome", ""),
-        ]
-        detalhe = self._detalhar_compra(*chaves_compra)
-        textos.extend(self._coletar_textos_objeto(detalhe))
-        return self.qualifier.qualificar_ti(" ".join(str(texto) for texto in textos if texto))
 
     def baixar(self, arquivo: ArquivoPNCP):
         arquivo.destino.parent.mkdir(parents=True, exist_ok=True)
@@ -140,25 +126,6 @@ class DownloaderService:
                 ultimo_erro = exc
         raise ultimo_erro
 
-    def _detalhar_compra(self, orgao_cnpj, ano, numero):
-        chave = (orgao_cnpj, ano, numero)
-        if chave in self._cache_compras:
-            return self._cache_compras[chave]
-        urls = [
-            f"https://pncp.gov.br/api/pncp/v1/orgaos/{orgao_cnpj}/compras/{ano}/{numero}",
-            f"https://pncp.gov.br/api/consulta/v1/orgaos/{orgao_cnpj}/compras/{ano}/{numero}",
-        ]
-        ultimo_erro = None
-        for url in urls:
-            try:
-                response = self._get(url)
-                dados = self._json_response(response, url)
-                self._cache_compras[chave] = dados
-                return dados
-            except (requests.exceptions.RequestException, PNCPJsonError) as exc:
-                ultimo_erro = exc
-        raise ultimo_erro
-
     def _get(self, url, timeout=60, tentativas=5):
         return self.http.get(url, timeout=timeout, retries=tentativas)
 
@@ -168,19 +135,6 @@ class DownloaderService:
         except ValueError as exc:
             status = getattr(response, "status_code", "desconhecido")
             raise PNCPJsonError(f"JSON invalido em {url} status={status}: {exc}") from exc
-
-    def _coletar_textos_objeto(self, dados):
-        if isinstance(dados, dict):
-            textos = []
-            campos_texto = ("objeto", "descricao", "descrição", "informacao", "informação")
-            for chave, valor in dados.items():
-                chave_normalizada = str(chave).lower()
-                if any(parte in chave_normalizada for parte in campos_texto):
-                    textos.append(str(valor))
-                elif isinstance(valor, dict):
-                    textos.extend(self._coletar_textos_objeto(valor))
-            return textos
-        return []
 
     def _parse_numero_controle_compra(self, numero_controle):
         match = NUMERO_CONTROLE_COMPRA_RE.match(str(numero_controle))

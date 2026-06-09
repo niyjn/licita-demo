@@ -491,14 +491,6 @@
         .replace(/`/g, '&#96;');
     }
 
-    function validarNome(input) {
-      return /^[a-zA-Z0-9 ]+$/.test(input);
-    }
-
-    function temCaracteresSuspeitos(input) {
-      return /<|>|"|'|`/.test(input);
-    }
-
     // Capture metric link clicks and display in modal
     document.querySelectorAll("a.metric").forEach(link => {
       link.addEventListener("click", async (event) => {
@@ -537,11 +529,6 @@
             const escapedNome = c.nome ? escapeHtml(c.nome) : '<span class="muted">Não identificado</span>';
             const escapedCnpj = escapeHtml(c.cnpj);
             
-            // Log verification or suspicion if needed
-            if (c.nome && temCaracteresSuspeitos(c.nome)) {
-              console.warn("Suspected name detected:", c.nome);
-            }
-
             html += `<tr>
               <td><code>${escapedCnpj}</code></td>
               <td>${escapedNome}</td>

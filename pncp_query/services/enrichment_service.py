@@ -16,10 +16,6 @@ class EnrichmentService:
         self.http = http or HttpClient()
         self._cache = {}
 
-    def nome(self, cnpj):
-        dados = self.consultar(cnpj)
-        return dados.get("razao_social", "") if dados else ""
-
     def consultar(self, cnpj):
         cnpj = somente_digitos(cnpj)
         if not cnpj or len(cnpj) != 14:

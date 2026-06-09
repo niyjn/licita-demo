@@ -17,7 +17,7 @@ class FakeResponse:
         return self._json_data
 
 
-def test_detalhar_compra_tenta_fallback_quando_primeiro_endpoint_nao_retorna_json():
+def test_detalhar_contrato_tenta_fallback_quando_primeiro_endpoint_nao_retorna_json():
     service = DownloaderService()
     chamadas = []
 
@@ -29,7 +29,7 @@ def test_detalhar_compra_tenta_fallback_quando_primeiro_endpoint_nao_retorna_jso
 
     service._get = fake_get
 
-    assert service._detalhar_compra("11222333000181", "2025", "1") == {"objetoCompra": "licenca de software"}
+    assert service._detalhar_contrato("11222333000181", "2025", "1") == {"objetoCompra": "licenca de software"}
     assert len(chamadas) == 2
 
 

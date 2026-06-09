@@ -23,10 +23,11 @@ class FakeHttp:
 def test_enrichment_service_retorna_nome():
     service = EnrichmentService(http=FakeHttp({"razao_social": "Empresa Participante"}))
 
-    assert service.nome("11.222.333/0001-81") == "Empresa Participante"
+    dados = service.consultar("11.222.333/0001-81")
+    assert dados.get("razao_social") == "Empresa Participante"
 
 
 def test_enrichment_service_falha_sem_quebrar():
     service = EnrichmentService(http=FakeHttp(exc=TimeoutError("timeout")))
 
-    assert service.nome("11.222.333/0001-81") == ""
+    assert service.consultar("11.222.333/0001-81") == {}

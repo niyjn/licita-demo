@@ -18,28 +18,6 @@ class PNCPSearchService:
         self.session.headers.update({"accept": "application/json", "user-agent": "pncp-query/1.0"})
         self.http = HttpClient(self.session)
 
-    def buscar(
-        self,
-        data_inicial,
-        data_final,
-        limite_por_combinacao=0,
-        pausa=1.0,
-        logger=print,
-        palavras_chave=None,
-        ufs=None,
-    ):
-        return list(
-            self.buscar_iter(
-                data_inicial,
-                data_final,
-                limite_por_combinacao,
-                pausa,
-                logger,
-                palavras_chave=palavras_chave,
-                ufs=ufs,
-            )
-        )
-
     def buscar_iter(
         self,
         data_inicial,
