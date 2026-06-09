@@ -517,6 +517,7 @@
 
   <script>
     const contratosJson = {{ contratos | tojson if contratos else '[]' }};
+    const REASON_LABELS = {{ reason_labels | tojson }};
     const form = document.querySelector("#analysis-form");
     const statusEl = document.querySelector("#analysis-status");
     const submitBtn = form.querySelector("button[type='submit']");
@@ -738,7 +739,27 @@
             return;
           }
           
-          let html = `<table>
+          // Sub-breakdown by reason when the disposition carries meaningful reasons
+          const reasonCounts = {};
+          data.cnpjs.forEach(c => {
+            const r = c.reason || '';
+            if (r) reasonCounts[r] = (reasonCounts[r] || 0) + 1;
+          });
+          const reasonEntries = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1]);
+          let html = '';
+          if (reasonEntries.length > 1 || (reasonEntries.length === 1 && data.cnpjs.length > 1)) {
+            html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border-soft);">';
+            reasonEntries.forEach(([reason, count]) => {
+              const label = REASON_LABELS[reason] || reason.replace(/_/g, ' ');
+              html += `<div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                <span class="pill amber" style="font-size:11px;">${escapeHtml(label)}</span>
+                <strong style="font-family:Sora,sans-serif;">${count}</strong>
+              </div>`;
+            });
+            html += '</div>';
+          }
+
+          html += `<table>
             <thead>
               <tr>
                 <th>CNPJ</th>
@@ -749,7 +770,7 @@
               </tr>
             </thead>
             <tbody>`;
-            
+
           data.cnpjs.forEach(c => {
             const sit = escapeHtml(c.situacao_cadastral || "-");
             const sourceText = c.source === 'ata' ? 'PDF da Ata' : 'Estruturada (PNCP)';

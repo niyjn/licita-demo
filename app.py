@@ -196,6 +196,7 @@ def create_app(config=None):
             incluir_ocultos=incluir_ocultos,
             documentos=documentos,
             funil_contratos=funil_contratos,
+            reason_labels=REASON_LABELS,
         )
 
     @app.post("/analises")
