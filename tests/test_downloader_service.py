@@ -124,3 +124,23 @@ def test_baixar_rejeita_conteudo_sem_assinatura_pdf(tmp_path):
         raise AssertionError("DocumentoInvalidoError esperado")
 
     assert not destino.exists()
+
+
+def test_listar_arquivos_ignora_relatorio_edital_e_docs_pre_compra(tmp_path):
+    service = DownloaderService()
+    service._listar_arquivos = lambda *args: [
+        {"titulo": "Relatorio de abertura do edital", "url": "/relatorio.pdf", "sequencialDocumento": 1},
+        {"titulo": "ETP do processo", "url": "/etp.pdf", "sequencialDocumento": 2},
+        {"titulo": "Mapa de preco", "url": "/mapa.pdf", "sequencialDocumento": 3},
+        {"titulo": "Ata de julgamento", "url": "/ata.pdf", "sequencialDocumento": 4},
+    ]
+
+    lote = service.listar_arquivos_candidatos(
+        {},
+        tmp_path,
+        chaves_compra=("11222333000181", "2026", "1"),
+    )
+
+    assert [arquivo.titulo for arquivo in lote.prioritarios] == ["Ata de julgamento"]
+    assert lote.fallback == []
+    assert lote.ignorados == 3
