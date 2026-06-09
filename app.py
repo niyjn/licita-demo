@@ -78,6 +78,8 @@ _MOTIVO_CURTO = {
 
 
 def create_app(config=None):
+    from markupsafe import Markup, escape
+
     app = Flask(
         __name__,
         static_folder="design-system",
@@ -87,6 +89,27 @@ def create_app(config=None):
     app.config.update(DB_PATH=DB_PATH, ANALYSIS_FUNC=analisar)
     if config:
         app.config.update(config)
+
+    @app.template_filter("highlight_signal")
+    def highlight_signal_filter(excerpt, signal):
+        """Wraps the first occurrence of *signal* in the excerpt with <mark>."""
+        if not signal or not excerpt:
+            return Markup(escape(excerpt or ""))
+        lower_excerpt = excerpt.lower()
+        lower_signal = signal.lower()
+        idx = lower_excerpt.find(lower_signal)
+        if idx < 0:
+            return Markup(escape(excerpt))
+        before = excerpt[:idx]
+        match = excerpt[idx : idx + len(signal)]
+        after = excerpt[idx + len(signal) :]
+        return Markup(
+            str(escape(before))
+            + '<mark style="background:var(--warning);color:var(--warning-text);padding:0 2px;">'
+            + str(escape(match))
+            + "</mark>"
+            + str(escape(after))
+        )
 
     @app.get("/")
     def index():

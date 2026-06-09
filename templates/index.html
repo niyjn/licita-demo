@@ -430,7 +430,7 @@
                                         <div class="evidence-entry">
                                           <strong>{{ evidencia.origin_file }}</strong>
                                           <span>Página {{ evidencia.page_number }} · {{ evidencia.scan_pass }}</span>
-                                          <small>{{ evidencia.excerpt }}</small>
+                                          <small>{{ evidencia.excerpt | highlight_signal(evidencia.signal) }}</small>
                                         </div>
                                       {% else %}
                                         <span class="muted">Sem evidência PDF associada</span>
@@ -718,6 +718,22 @@
         .replace(/`/g, '&#96;');
     }
 
+    function highlightSignal(excerpt, signal) {
+      if (!signal || !excerpt) return escapeHtml(excerpt || '');
+      const lower = excerpt.toLowerCase();
+      const lsignal = signal.toLowerCase();
+      const idx = lower.indexOf(lsignal);
+      if (idx < 0) return escapeHtml(excerpt);
+      const before = excerpt.slice(0, idx);
+      const match  = excerpt.slice(idx, idx + signal.length);
+      const after  = excerpt.slice(idx + signal.length);
+      return escapeHtml(before)
+        + '<mark style="background:var(--warning);color:var(--warning-text);padding:0 2px;">'
+        + escapeHtml(match)
+        + '</mark>'
+        + escapeHtml(after);
+    }
+
     // Capture metric link clicks and display in modal
     document.querySelectorAll("a.metric").forEach(link => {
       link.addEventListener("click", async (event) => {
@@ -780,7 +796,7 @@
             const evidenciaHtml = evidencia
               ? `<strong>${escapeHtml(evidencia.origin_file)}</strong><br>
                  <span class="muted">Página ${escapeHtml(evidencia.page_number)} · ${escapeHtml(evidencia.scan_pass)}</span><br>
-                 <small>${escapeHtml(evidencia.excerpt)}</small>`
+                 <small>${highlightSignal(evidencia.excerpt, evidencia.signal)}</small>`
               : `<span class="muted">${escapeHtml(c.reason || 'Sem evidência PDF associada')}</span>`;
             
             html += `<tr>
