@@ -55,6 +55,19 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
         controle = linha.get("numero_controle_pncp") or _chave_linha(linha)
         _emit(progress, "contrato", f"Analisando {controle}.", indice, total_compras)
 
+        motivo_descarte = _motivo_descarte(linha)
+        if motivo_descarte:
+            chaves = _chaves_local(linha)
+            contrato = _montar_contrato(linha, chaves)
+            contrato["run_id"] = run_id
+            contrato["status"], contrato["motivo_status"] = "descartado", motivo_descarte
+            contrato_id = storage.salvar_contrato(contrato, [])
+            if run_id:
+                storage.salvar_metricas_funil(contrato_id, run_id, _metricas_vazias())
+            contratos_salvos += 1
+            _emit(progress, "ignorado", f"Compra descartada por regra direta: {controle}.", indice, total_compras)
+            continue
+
         chaves = downloader.resolver_chaves_compra(linha)
         if not chaves:
             _emit(progress, "ignorado", f"Compra sem chaves PNCP suficientes: {controle}.", indice, total_compras)
@@ -131,7 +144,7 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
         auditoria["metricas"].update(metricas_documentos)
         contrato = _montar_contrato(linha, chaves)
         contrato["run_id"] = run_id
-        contrato["status"], contrato["motivo_status"] = _status_contrato(linha, auditoria)
+        contrato["status"], contrato["motivo_status"] = _status_contrato(auditoria)
         contrato_id = storage.salvar_contrato(contrato, auditoria["participantes"])
         if run_id:
             storage.salvar_cnpjs_auditoria(contrato_id, run_id, auditoria["registros"])
@@ -231,6 +244,13 @@ def _montar_auditoria(
 
     removido_vencedor = restantes & cnpjs_vencedores
     restantes -= removido_vencedor
+    cnpjs_vencedores_inferidos = set()
+    if not cnpjs_vencedores:
+        for cnpj in sorted(restantes):
+            itens = evidencias_por_cnpj.get(cnpj, [])
+            if any(item.get("category") == "vencedor" for item in itens):
+                cnpjs_vencedores_inferidos.add(cnpj)
+        restantes -= cnpjs_vencedores_inferidos
     perdedores_final = set()
     candidatos_inconclusivos = set()
     motivo_inconclusivo = {}
@@ -238,7 +258,7 @@ def _montar_auditoria(
         itens = evidencias_por_cnpj.get(cnpj, [])
         tem_participacao = any(item.get("category") == "participante" for item in itens)
         tem_conflito = any(item.get("category") == "conflitante" for item in itens)
-        if not cnpjs_vencedores:
+        if not cnpjs_vencedores and not cnpjs_vencedores_inferidos:
             candidatos_inconclusivos.add(cnpj)
             motivo_inconclusivo[cnpj] = "vencedores_indisponiveis"
         elif tem_conflito:
@@ -254,6 +274,7 @@ def _montar_auditoria(
         len(removido_invalido)
         + len(removido_orgao)
         + len(removido_vencedor)
+        + len(cnpjs_vencedores_inferidos)
         + len(candidatos_inconclusivos)
         + len(perdedores_final)
     )
@@ -274,10 +295,33 @@ def _montar_auditoria(
                 dados_empresa = enrichment.consultar(cnpj)
             nome = dados_empresa.get("razao_social", "")
             situacao = dados_empresa.get("situacao_cadastral", "")
-            
+
             registro = _registro_ata(cnpj, disposition, reason, cnpjs_origem, situacao_cadastral=situacao)
             registro["nome"] = nome
             registros.append(registro)
+
+    for cnpj in sorted(cnpjs_vencedores_inferidos):
+        dados_empresa = enrichment.consultar(cnpj)
+        nome = dados_empresa.get("razao_social", "")
+        situacao = dados_empresa.get("situacao_cadastral", "")
+        participantes.append(
+            {
+                "cnpj": cnpj,
+                "nome": nome,
+                "papel": "adjudicatario",
+                "valor_homologado": None,
+                "situacao_cadastral": situacao,
+            }
+        )
+        registro = _registro_ata(
+            cnpj,
+            "vencedor_inferido",
+            "contratada_inferida_da_ata",
+            cnpjs_origem,
+            situacao_cadastral=situacao,
+        )
+        registro["nome"] = nome
+        registros.append(registro)
 
     for cnpj in sorted(perdedores_final):
         dados_empresa = enrichment.consultar(cnpj)
@@ -321,7 +365,8 @@ def _montar_auditoria(
         "candidatos_inconclusivos": len(candidatos_inconclusivos),
         "perdedores_final": len(perdedores_final),
         "vencedores": len(cnpjs_vencedores),
-        "resultado_final": len(perdedores_final) + len(cnpjs_vencedores),
+        "vencedores_inferidos": len(cnpjs_vencedores_inferidos),
+        "resultado_final": len(perdedores_final) + len(cnpjs_vencedores) + len(cnpjs_vencedores_inferidos),
     }
     return {"participantes": participantes, "registros": registros, "metricas": metricas}
 
@@ -337,15 +382,34 @@ def _registro_ata(cnpj, disposition, reason, cnpjs_origem, situacao_cadastral=""
     }
 
 
-def _status_contrato(linha, auditoria):
-    motivo_descarte = _motivo_descarte(linha)
-    if motivo_descarte:
-        return "descartado", motivo_descarte
-    if auditoria["metricas"]["vencedores"] == 0:
+def _status_contrato(auditoria):
+    total_vencedores = auditoria["metricas"]["vencedores"] + auditoria["metricas"]["vencedores_inferidos"]
+    if total_vencedores == 0:
         return "vazio", "vencedores_indisponiveis"
     if auditoria["metricas"]["perdedores_final"] == 0:
         return "vazio", "sem_perdedores_na_ata"
     return "final", ""
+
+
+def _metricas_vazias():
+    return {
+        "atas_lidas": 0,
+        "atas_falhas": 0,
+        "cnpjs_ata_unicos": 0,
+        "removido_invalido": 0,
+        "removido_orgao": 0,
+        "removido_vencedor": 0,
+        "candidatos_inconclusivos": 0,
+        "perdedores_final": 0,
+        "vencedores": 0,
+        "vencedores_inferidos": 0,
+        "resultado_final": 0,
+        "documentos_listados": 0,
+        "documentos_prioritarios_lidos": 0,
+        "documentos_fallback_lidos": 0,
+        "documentos_ignorados": 0,
+        "documentos_duplicados": 0,
+    }
 
 
 def _ha_perdedor_confirmavel(adjudicatarios, evidencias, orgao_cnpj):
@@ -451,6 +515,13 @@ def _montar_contrato(linha, chaves):
         "data_publicacao": linha.get("data_publicacao_pncp", ""),
         "item_url": linha.get("item_url", ""),
     }
+
+
+def _chaves_local(linha):
+    orgao_cnpj = somente_digitos(linha.get("orgao_cnpj"))
+    ano = str(somente_digitos(linha.get("ano")))
+    sequencial = str(int(somente_digitos(linha.get("numero_sequencial")) or "0"))
+    return orgao_cnpj, ano, sequencial
 
 
 def _linha(compra):
