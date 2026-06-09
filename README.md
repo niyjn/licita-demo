@@ -92,4 +92,4 @@ ruff check .
 
 ## Stack
 
-Python 3.11 · Flask · Jinja2 · SQLite · requests · pandas · pdfplumber · pytesseract · pdf2image · python-dateutil
+Python 3.11 · Flask · Jinja2 · SQLite · requests · pdfplumber · pytesseract · pdf2image · python-dateutil

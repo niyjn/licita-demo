@@ -1,5 +1,4 @@
 requests
-pandas
 flask
 gunicorn
 python-dateutil
