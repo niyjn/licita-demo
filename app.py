@@ -52,13 +52,6 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
-    # Limpa runs órfãs que ficaram travadas após uma queda ou reinicialização do servidor
-    try:
-        Storage(app.config["DB_PATH"]).limpar_runs_orfas()
-    except Exception as e:
-        import sys
-        print(f"Erro ao limpar runs órfãs no startup: {e}", file=sys.stderr)
-
     @app.get("/")
     def index():
         storage = Storage(app.config["DB_PATH"])

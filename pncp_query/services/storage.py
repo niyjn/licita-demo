@@ -171,15 +171,6 @@ class Storage:
         with self.connect() as conn:
             conn.execute(f"UPDATE runs SET {', '.join(updates)} WHERE id = ?", params)
 
-    def limpar_runs_orfas(self):
-        """Marca runs que ficaram presas em 'running' ou 'queued' como 'error' (ex: reinicialização do app)."""
-        with self.connect() as conn:
-            conn.execute(
-                "UPDATE runs SET status = 'error', message = 'Análise interrompida pelo servidor.', "
-                "error = 'Servidor reiniciado.', finished_at = ? WHERE status IN ('running', 'queued')",
-                (_now(),)
-            )
-
     def limpar_runs_travadas(self, timeout_segundos=3600):
         """Marca runs travadas (ex: erro silencioso) há mais de timeout_segundos como 'error'."""
         with self.connect() as conn:
