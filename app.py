@@ -202,7 +202,12 @@ def create_app(config=None):
             uf = "SP"
 
         incluir_ocultos = request.args.get("mostrar") == "ocultos"
-        contratos = _listar_contratos(db_path, uf, run_id=run["id"] if run else None, incluir_ocultos=incluir_ocultos)
+        todos = _listar_contratos(db_path, uf, run_id=run["id"] if run else None, incluir_ocultos=True)
+        contratos_descartados = [c for c in todos if c.get("status") == "descartado"]
+        contratos = [
+            c for c in todos
+            if c.get("status") != "descartado" and (incluir_ocultos or c.get("status") == "final")
+        ]
         resumo = _resumo_run(db_path, run) if run else _resumo_contratos(contratos)
         documentos = _documentos_extraidos(db_path, run["id"]) if run else []
         funil_contratos = _funil_contratos_run(db_path, run["id"]) if run else None
@@ -213,6 +218,7 @@ def create_app(config=None):
             uf_atual=uf,
             periodo_padrao=janela_padrao(),
             contratos=[_contrato_view(contrato) for contrato in contratos],
+            contratos_descartados=[_contrato_view(contrato) for contrato in contratos_descartados],
             resumo=resumo,
             run=run,
             run_params=run_params,
