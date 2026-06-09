@@ -64,6 +64,18 @@ RUN_STATUS_TONES = {
     "error": "red",
 }
 
+_MOTIVO_CURTO = {
+    "contratacao_direta_ou_exclusividade:dispensa": "Dispensa",
+    "contratacao_direta_ou_exclusividade:inexigibilidade": "Inexigibilidade",
+    "contratacao_direta_ou_exclusividade:contratacao direta": "Contratação direta",
+    "contratacao_direta_ou_exclusividade:exclusividade": "Exclusividade",
+    "contratacao_direta_ou_exclusividade:notoria especializacao": "Notória especialização",
+    "contratacao_direta_ou_exclusividade:inviabilidade de competicao": "Inviabilidade de competição",
+    "contratacao_direta_ou_exclusividade:fornecedor exclusivo": "Fornecedor exclusivo",
+    "sem_perdedores_na_ata": "Sem ata publicada",
+    "vencedores_indisponiveis": "Resultado indisponível",
+}
+
 
 def create_app(config=None):
     app = Flask(
@@ -170,6 +182,7 @@ def create_app(config=None):
         contratos = _listar_contratos(db_path, uf, run_id=run["id"] if run else None, incluir_ocultos=incluir_ocultos)
         resumo = _resumo_run(db_path, run) if run else _resumo_contratos(contratos)
         documentos = _documentos_extraidos(db_path, run["id"]) if run else []
+        funil_contratos = _funil_contratos_run(db_path, run["id"]) if run else None
         return render_template(
             "index.html",
             areas=[{"value": area, "label": AREA_LABELS.get(area, area)} for area in AREAS],
@@ -182,6 +195,7 @@ def create_app(config=None):
             run_params=run_params,
             incluir_ocultos=incluir_ocultos,
             documentos=documentos,
+            funil_contratos=funil_contratos,
         )
 
     @app.post("/analises")
@@ -311,6 +325,33 @@ def _resumo_contratos(contratos):
         "perdedores": perdedores,
         "resultado_final": vencedores + perdedores,
     }
+
+
+def _funil_contratos_run(db_path, run_id):
+    if not Path(db_path).exists():
+        return None
+    rows = Storage(db_path).contar_contratos_status(run_id)
+    funil = {"total": 0, "final": 0, "vazio": [], "descartado": []}
+    for row in rows:
+        funil["total"] += row["total"]
+        status = row["status"]
+        motivo = row["motivo_status"] or ""
+        entry = {"motivo": motivo, "label": _rotulo_motivo_curto(motivo), "total": row["total"]}
+        if status == "final":
+            funil["final"] += row["total"]
+        elif status == "vazio":
+            funil["vazio"].append(entry)
+        elif status == "descartado":
+            funil["descartado"].append(entry)
+    funil["descartado_total"] = sum(e["total"] for e in funil["descartado"])
+    funil["vazio_total"] = sum(e["total"] for e in funil["vazio"])
+    return funil if funil["total"] > 0 else None
+
+
+def _rotulo_motivo_curto(motivo):
+    if not motivo:
+        return ""
+    return _MOTIVO_CURTO.get(motivo) or _rotulo_motivo(motivo)
 
 
 def _resumo_run(db_path, run):

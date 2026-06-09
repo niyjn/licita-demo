@@ -166,6 +166,42 @@
           </div>
         {% endif %}
 
+        {% if funil_contratos %}
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); margin-bottom: 20px;">
+            <div style="padding: 14px 18px; border-right: 1px solid var(--border);">
+              <span class="eyebrow" style="font-size: 10px; color: var(--muted);">Descartados</span>
+              <div style="font-family: Sora, sans-serif; font-size: 26px; font-weight: 700; line-height: 1; margin: 6px 0 10px; color: var(--muted);">{{ funil_contratos.descartado_total }}</div>
+              {% for entry in funil_contratos.descartado %}
+                <div style="display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 3px;">
+                  <span>{{ entry.label }}</span><strong>{{ entry.total }}</strong>
+                </div>
+              {% else %}
+                <span class="muted" style="font-size: 12px;">Nenhum</span>
+              {% endfor %}
+            </div>
+            <div style="padding: 14px 18px; border-right: 1px solid var(--border); background: var(--surface-muted);">
+              <span class="eyebrow" style="font-size: 10px; color: var(--muted);">Vazios</span>
+              <div style="font-family: Sora, sans-serif; font-size: 26px; font-weight: 700; line-height: 1; margin: 6px 0 10px;">{{ funil_contratos.vazio_total }}</div>
+              {% for entry in funil_contratos.vazio %}
+                <div style="display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 3px;">
+                  <span>{{ entry.label }}</span><strong>{{ entry.total }}</strong>
+                </div>
+              {% else %}
+                <span class="muted" style="font-size: 12px;">Nenhum</span>
+              {% endfor %}
+            </div>
+            <div style="padding: 14px 18px; background: var(--surface-muted);">
+              <span class="eyebrow" style="font-size: 10px;">Com resultado</span>
+              <div style="font-family: Sora, sans-serif; font-size: 26px; font-weight: 700; line-height: 1; margin: 6px 0 10px; color: var(--success);">{{ funil_contratos.final }}</div>
+              {% if funil_contratos.final > 0 %}
+                <div style="font-size: 12px; color: var(--muted);">{{ resumo.perdedores_final|default(0) }} perdedor(es) confirmado(s)</div>
+              {% else %}
+                <div style="font-size: 12px; color: var(--muted);">Nenhum pregão com ata disponível</div>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+
         <div class="metrics-grid">
           <div class="metric">
             <span>Atas lidas com sucesso</span>

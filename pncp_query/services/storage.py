@@ -536,6 +536,21 @@ class Storage:
         ).fetchone()
         return row["id"] if row else None
 
+    def contar_contratos_status(self, run_id):
+        """Retorna [{status, motivo_status, total}] para uma run — usado no funil de cobertura."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT status, motivo_status, COUNT(*) AS total
+                FROM contratos
+                WHERE run_id = ?
+                GROUP BY status, motivo_status
+                ORDER BY status, motivo_status
+                """,
+                (run_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def listar_contratos(self, uf=None, run_id=None, incluir_ocultos=True):
         query = "SELECT * FROM contratos"
         params = []
