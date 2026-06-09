@@ -430,8 +430,17 @@
 
       const response = await fetch("/analises", { method: "POST", body: formData });
       const payload = await response.json();
+
+      if (!response.ok) {
+        statusEl.textContent = payload.message || payload.error || "Erro desconhecido.";
+        submitBtn.disabled = false;
+        form.querySelectorAll("input, select").forEach(el => el.disabled = false);
+        progressContainer.style.display = "none";
+        return;
+      }
+
       const runId = payload.run_id;
-      
+
       const poll = async () => {
         const statusResponse = await fetch(`/analises/${runId}/status`);
         const status = await statusResponse.json();
