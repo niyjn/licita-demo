@@ -130,18 +130,18 @@
         {% endif %}
 
         <div class="metrics-grid">
-          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}">
+          <div class="metric">
             <span>Atas lidas com sucesso</span>
             <strong>{{ resumo.atas_lidas|default(0) }}</strong>
-          </a>
+          </div>
           <div class="metric">
             <span>Falhas de leitura / parser</span>
             <strong>{{ resumo.atas_falhas|default(0) }}</strong>
           </div>
-          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id) if run else '#' }}">
+          <div class="metric">
             <span>CNPJs únicos das atas</span>
             <strong>{{ resumo.cnpjs_ata_unicos|default(0) }}</strong>
-          </a>
+          </div>
           <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_invalido') if run else '#' }}">
             <span>Dígito inválido</span>
             <strong>{{ resumo.removido_invalido|default(0) }}</strong>
