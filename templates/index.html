@@ -203,6 +203,10 @@
             <span>Vencedores estruturados</span>
             <strong>{{ resumo.vencedores|default(0) }}</strong>
           </a>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='vencedor_inferido') if run else '#' }}">
+            <span>Vencedores inferidos</span>
+            <strong>{{ resumo.vencedores_inferidos|default(0) }}</strong>
+          </a>
           <div class="metric">
             <span>Resultado final</span>
             <strong>{{ resumo.resultado_final|default(0) }}</strong>

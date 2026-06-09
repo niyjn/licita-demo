@@ -25,6 +25,7 @@ DISPOSITION_LABELS = {
     "removido_invalido": "Removido por dígito inválido",
     "removido_orgao": "Removido por órgão comprador",
     "removido_vencedor": "Removido por vencedor",
+    "vencedor_inferido": "Vencedor inferido",
     "vencedor": "Vencedor",
 }
 
@@ -34,6 +35,7 @@ REASON_LABELS = {
     "digito_verificador_invalido": "Dígito verificador inválido",
     "evidencia_conflitante": "Evidência conflitante no documento",
     "evidencia_explicita_participacao": "Participação explícita no documento",
+    "contratada_inferida_da_ata": "Contratada inferida da ata",
     "orgao_comprador": "Órgão comprador",
     "resultado_pncp_estruturado": "Resultado estruturado do PNCP",
     "sem_contexto_explicito": "CNPJ sem contexto explícito de participação",

@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _INITIALIZED_DBS: set[str] = set()
 
@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS metricas_funil (
     candidatos_inconclusivos INTEGER NOT NULL DEFAULT 0,
     perdedores_final INTEGER NOT NULL DEFAULT 0,
     vencedores INTEGER NOT NULL DEFAULT 0,
+    vencedores_inferidos INTEGER NOT NULL DEFAULT 0,
     resultado_final INTEGER NOT NULL DEFAULT 0,
     documentos_listados INTEGER NOT NULL DEFAULT 0,
     documentos_prioritarios_lidos INTEGER NOT NULL DEFAULT 0,
@@ -174,6 +175,11 @@ class Storage:
                     pass
             try:
                 conn.execute("ALTER TABLE cnpjs_auditoria ADD COLUMN situacao_cadastral TEXT NOT NULL DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+        if current_version < 6:
+            try:
+                conn.execute("ALTER TABLE metricas_funil ADD COLUMN vencedores_inferidos INTEGER NOT NULL DEFAULT 0")
             except sqlite3.OperationalError:
                 pass
 
@@ -435,6 +441,7 @@ class Storage:
             "candidatos_inconclusivos": 0,
             "perdedores_final": 0,
             "vencedores": 0,
+            "vencedores_inferidos": 0,
             "resultado_final": 0,
             "documentos_listados": 0,
             "documentos_prioritarios_lidos": 0,
@@ -449,12 +456,13 @@ class Storage:
                 INSERT INTO metricas_funil
                     (contrato_id, run_id, atas_lidas, atas_falhas, cnpjs_ata_unicos,
                      removido_invalido, removido_orgao, removido_vencedor,
-                     candidatos_inconclusivos, perdedores_final, vencedores, resultado_final,
+                     candidatos_inconclusivos, perdedores_final, vencedores, vencedores_inferidos, resultado_final,
                      documentos_listados, documentos_prioritarios_lidos,
                      documentos_fallback_lidos, documentos_ignorados, documentos_duplicados)
                 VALUES (:contrato_id, :run_id, :atas_lidas, :atas_falhas, :cnpjs_ata_unicos,
                         :removido_invalido, :removido_orgao, :removido_vencedor,
-                        :candidatos_inconclusivos, :perdedores_final, :vencedores, :resultado_final,
+                        :candidatos_inconclusivos, :perdedores_final, :vencedores,
+                        :vencedores_inferidos, :resultado_final,
                         :documentos_listados, :documentos_prioritarios_lidos,
                         :documentos_fallback_lidos, :documentos_ignorados, :documentos_duplicados)
                 ON CONFLICT(contrato_id) DO UPDATE SET
@@ -467,6 +475,7 @@ class Storage:
                     candidatos_inconclusivos=excluded.candidatos_inconclusivos,
                     perdedores_final=excluded.perdedores_final,
                     vencedores=excluded.vencedores,
+                    vencedores_inferidos=excluded.vencedores_inferidos,
                     resultado_final=excluded.resultado_final,
                     documentos_listados=excluded.documentos_listados,
                     documentos_prioritarios_lidos=excluded.documentos_prioritarios_lidos,
@@ -501,6 +510,7 @@ class Storage:
                     COALESCE(SUM(candidatos_inconclusivos), 0) AS candidatos_inconclusivos,
                     COALESCE(SUM(perdedores_final), 0) AS perdedores_final,
                     COALESCE(SUM(vencedores), 0) AS vencedores,
+                    COALESCE(SUM(vencedores_inferidos), 0) AS vencedores_inferidos,
                     COALESCE(SUM(resultado_final), 0) AS resultado_final,
                     COALESCE(SUM(documentos_listados), 0) AS documentos_listados,
                     COALESCE(SUM(documentos_prioritarios_lidos), 0) AS documentos_prioritarios_lidos,
