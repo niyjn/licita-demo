@@ -137,7 +137,9 @@ def _buscar_compras(search, area, data_inicial, data_final, uf, limite, progress
     return compras
 
 
-def _montar_auditoria(adjudicatarios, cnpjs_ata, orgao_cnpj, enrichment, cnpjs_origem=None, atas_lidas=0, atas_falhas=0):
+def _montar_auditoria(
+    adjudicatarios, cnpjs_ata, orgao_cnpj, enrichment, cnpjs_origem=None, atas_lidas=0, atas_falhas=0
+):
     participantes = []
     registros = []
     cnpjs_vencedores = set()
@@ -221,7 +223,9 @@ def _montar_auditoria(adjudicatarios, cnpjs_ata, orgao_cnpj, enrichment, cnpjs_o
                 "situacao_cadastral": situacao,
             }
         )
-        registro = _registro_ata(cnpj, "perdedor_final", "cnpj_valido_da_ata", cnpjs_origem, situacao_cadastral=situacao)
+        registro = _registro_ata(
+            cnpj, "perdedor_final", "cnpj_valido_da_ata", cnpjs_origem, situacao_cadastral=situacao
+        )
         registro["nome"] = nome
         registros.append(registro)
 

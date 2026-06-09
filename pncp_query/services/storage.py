@@ -174,7 +174,9 @@ class Storage:
     def limpar_runs_travadas(self, timeout_segundos=3600):
         """Marca runs travadas (ex: erro silencioso) há mais de timeout_segundos como 'error'."""
         with self.connect() as conn:
-            rows = conn.execute("SELECT id, started_at, created_at FROM runs WHERE status IN ('running', 'queued')").fetchall()
+            rows = conn.execute(
+                "SELECT id, started_at, created_at FROM runs WHERE status IN ('running', 'queued')"
+            ).fetchall()
             now = datetime.now()
             for row in rows:
                 ref_time_str = row["started_at"] or row["created_at"]
@@ -233,7 +235,10 @@ class Storage:
                         valor_homologado=excluded.valor_homologado,
                         situacao_cadastral=excluded.situacao_cadastral
                     """,
-                    (contrato_id, p["cnpj"], p.get("nome", ""), p["papel"], p.get("valor_homologado"), p.get("situacao_cadastral", "")),
+                    (
+                        contrato_id, p["cnpj"], p.get("nome", ""), p["papel"],
+                        p.get("valor_homologado"), p.get("situacao_cadastral", ""),
+                    ),
                 )
             return contrato_id
 
@@ -372,8 +377,8 @@ class Storage:
                 contrato["auditoria"] = [
                     dict(r)
                     for r in conn.execute(
-                        "SELECT cnpj, nome, source, disposition, reason, origin_file, situacao_cadastral FROM cnpjs_auditoria "
-                        "WHERE contrato_id = ? ORDER BY disposition ASC, cnpj ASC",
+                        "SELECT cnpj, nome, source, disposition, reason, origin_file, situacao_cadastral "
+                        "FROM cnpjs_auditoria WHERE contrato_id = ? ORDER BY disposition ASC, cnpj ASC",
                         (contrato["id"],),
                     ).fetchall()
                 ]

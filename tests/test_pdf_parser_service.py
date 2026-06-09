@@ -1,9 +1,8 @@
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-import pytest
+from unittest.mock import patch
 
-from pncp_query.services.pdf_parser_service import PDFParserService
 from pncp_query.models import ResultadoPDF
+from pncp_query.services.pdf_parser_service import PDFParserService
 
 
 def test_normalizar():

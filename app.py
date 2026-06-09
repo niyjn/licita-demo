@@ -1,10 +1,11 @@
+import json
 import re
 import unicodedata
 from pathlib import Path
 from threading import Thread
 from uuid import uuid4
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, make_response, render_template, request
 
 from analise import analisar
 from pncp_query.config import AREAS, DB_PATH, UFS, janela_padrao
@@ -78,7 +79,6 @@ def create_app(config=None):
         return _render_dashboard(db_path, run)
 
     def _render_dashboard(db_path, run):
-        import json
         run_params = None
         if run and run.get("params_json"):
             try:
@@ -164,8 +164,6 @@ def create_app(config=None):
             "auditorias": auditorias
         }
         
-        from flask import make_response
-        import json
         resposta = make_response(json.dumps(dados, indent=2, ensure_ascii=False))
         resposta.headers["Content-Disposition"] = f"attachment; filename=analise-pncp-{run_id}.json"
         resposta.headers["Content-Type"] = "application/json"
@@ -328,19 +326,19 @@ def _payload_analise():
         
     try:
         limite = int(data.get("limite") or 10)
-        if limite <= 0 or limite > 100:
-            raise ValueError("O limite deve ser entre 1 e 100.")
     except ValueError:
-        raise ValueError("O limite deve ser um número inteiro válido entre 1 e 100.")
-        
+        raise ValueError("O limite deve ser um número inteiro válido entre 1 e 100.") from None
+    if limite <= 0 or limite > 100:
+        raise ValueError("O limite deve ser entre 1 e 100.")
+
     data_inicial = data.get("data_inicial") or inicio
     data_final = data.get("data_final") or fim
-    
+
     try:
         dt_inicio = datetime.strptime(data_inicial, "%Y-%m-%d")
         dt_fim = datetime.strptime(data_final, "%Y-%m-%d")
     except ValueError:
-        raise ValueError("Formato de data inválido. Use YYYY-MM-DD.")
+        raise ValueError("Formato de data inválido. Use YYYY-MM-DD.") from None
         
     if dt_inicio > dt_fim:
         raise ValueError("A data inicial não pode ser posterior à data final.")
