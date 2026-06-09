@@ -44,6 +44,7 @@ class LoteArquivosPNCP:
 class ResultadoPDF:
     arquivo: str
     cnpjs_total: list[str] = field(default_factory=list)
+    evidencias: list["EvidenciaCNPJ"] = field(default_factory=list)
     origem_texto: str = "pdfplumber"
     erro: str = ""
     ocr_attempted: bool = False
@@ -51,3 +52,12 @@ class ResultadoPDF:
     ocr_error: str = ""
     page_count: int = 0
     parse_duration_ms: int = 0
+
+
+@dataclass(frozen=True)
+class EvidenciaCNPJ:
+    cnpj: str
+    pagina: int
+    trecho: str
+    categoria: str
+    sinal: str

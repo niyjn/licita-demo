@@ -2,6 +2,7 @@ import re
 import shutil
 import subprocess
 import time
+import unicodedata
 from pathlib import Path
 
 from pncp_query.config import (
@@ -10,10 +11,48 @@ from pncp_query.config import (
     PDF_TEXT_MAX_PAGES,
     PDF_TEXT_TIMEOUT_SECONDS,
 )
-from pncp_query.models import ResultadoPDF
+from pncp_query.models import EvidenciaCNPJ, ResultadoPDF
+from pncp_query.services.common import somente_digitos
 
-CNPJ_RE = re.compile(r"\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}")
+CNPJ_RE = re.compile(
+    r"(?<!\d)\d{2}(?:[.\s]?\d{3}){2}(?:[/\s]?\d{4})(?:[-\s]?\d{2})(?!\d)"
+)
 PAGES_RE = re.compile(r"^Pages:\s+(\d+)", re.MULTILINE)
+PARTICIPANT_SIGNALS = (
+    "participante",
+    "licitante",
+    "proponente",
+    "proposta apresentada",
+    "classificada",
+    "classificado",
+    "classificacao",
+    "habilitada",
+    "habilitado",
+    "habilitacao",
+    "inabilitada",
+    "inabilitado",
+    "inabilitacao",
+    "desclassificada",
+    "desclassificado",
+    "desclassificacao",
+)
+CONFLICT_SIGNALS = (
+    "vencedor",
+    "vencedora",
+    "adjudicatario",
+    "adjudicataria",
+    "contratado",
+    "contratada",
+    "homologado",
+    "homologada",
+    "orgao comprador",
+    "contratante",
+    "fiscal",
+    "gestor",
+    "responsavel",
+    "assinatura",
+    "contato",
+)
 
 
 class PDFParserService:
@@ -23,7 +62,7 @@ class PDFParserService:
         try:
             texto, page_count = self._extrair_texto_nativo(caminho_pdf)
             resultado.page_count = page_count
-            if len(texto.strip()) < 80:
+            if len(texto.strip()) < 80 and not CNPJ_RE.search(texto):
                 resultado.origem_texto = "ocr"
                 resultado.ocr_attempted = True
                 try:
@@ -37,9 +76,55 @@ class PDFParserService:
             resultado.parse_duration_ms = int((time.perf_counter() - inicio) * 1000)
             return resultado
 
-        resultado.cnpjs_total = sorted(set(CNPJ_RE.findall(texto)))
+        resultado.evidencias = self._extrair_evidencias(texto)
+        resultado.cnpjs_total = sorted({evidencia.cnpj for evidencia in resultado.evidencias})
         resultado.parse_duration_ms = int((time.perf_counter() - inicio) * 1000)
         return resultado
+
+    def _extrair_evidencias(self, texto):
+        evidencias = []
+        paginas = texto.split("\f")
+        for numero_pagina, pagina in enumerate(paginas, start=1):
+            for match in CNPJ_RE.finditer(pagina):
+                cnpj = somente_digitos(match.group(0))
+                inicio = pagina.rfind("\n", 0, match.start()) + 1
+                fim = pagina.find("\n", match.end())
+                if fim < 0:
+                    fim = len(pagina)
+                trecho = " ".join(pagina[inicio:fim].split())
+                categoria, sinal = self._classificar_contexto(trecho)
+                if categoria == "incidental" and inicio > 0:
+                    fim_anterior = inicio - 1
+                    inicio_anterior = pagina.rfind("\n", 0, fim_anterior) + 1
+                    linha_anterior = " ".join(pagina[inicio_anterior:fim_anterior].split())
+                    categoria_anterior, sinal_anterior = self._classificar_contexto(linha_anterior)
+                    if categoria_anterior != "incidental" and not CNPJ_RE.search(linha_anterior):
+                        trecho = f"{linha_anterior} {trecho}".strip()
+                        categoria, sinal = categoria_anterior, sinal_anterior
+                evidencias.append(
+                    EvidenciaCNPJ(
+                        cnpj=cnpj,
+                        pagina=numero_pagina,
+                        trecho=trecho[:500],
+                        categoria=categoria,
+                        sinal=sinal,
+                    )
+                )
+        return evidencias
+
+    def _classificar_contexto(self, trecho):
+        contexto = self._normalizar_contexto(trecho)
+        for sinal in CONFLICT_SIGNALS:
+            if sinal in contexto:
+                return "conflitante", sinal
+        for sinal in PARTICIPANT_SIGNALS:
+            if sinal in contexto:
+                return "participante", sinal
+        return "incidental", ""
+
+    def _normalizar_contexto(self, valor):
+        sem_acento = unicodedata.normalize("NFKD", str(valor)).encode("ascii", "ignore").decode("ascii")
+        return " ".join(sem_acento.lower().split())
 
     def _extrair_texto_nativo(self, caminho_pdf: Path):
         if shutil.which("pdftotext"):
@@ -110,7 +195,7 @@ class PDFParserService:
                     flush_cache = getattr(pagina, "flush_cache", None)
                     if flush_cache:
                         flush_cache()
-        return "\n".join(partes), page_count
+        return "\f".join(partes), page_count
 
     def _extrair_texto_ocr(self, caminho_pdf: Path, page_count=None):
         try:
@@ -137,4 +222,4 @@ class PDFParserService:
                     close = getattr(imagem, "close", None)
                     if close:
                         close()
-        return "\n".join(texto)
+        return "\f".join(texto)
