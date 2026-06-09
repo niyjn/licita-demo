@@ -318,7 +318,7 @@
                                 {% for item in contrato.auditoria %}
                                   <tr>
                                     <td><code>{{ item.cnpj }}</code></td>
-                                    <td>{{ item.nome or '<span class="muted">Não identificado</span>' }}</td>
+                                    <td>{% if item.nome %}{{ item.nome }}{% else %}<span class="muted">Não identificado</span>{% endif %}</td>
                                     <td>
                                       <strong>{{ 'Estruturada (PNCP)' if item.source == 'estruturada' else 'Ata em PDF' }}</strong>
                                       {% if item.origin_file %}
