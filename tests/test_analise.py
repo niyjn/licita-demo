@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import analise
-from pncp_query.models import Licitacao, ResultadoPDF
+from pncp_query.models import ArquivoPNCP, EvidenciaCNPJ, Licitacao, LoteArquivosPNCP, ResultadoPDF
 from pncp_query.services.storage import Storage
 
 
@@ -38,6 +38,13 @@ class FakeDownloader:
         destino.parent.mkdir(parents=True, exist_ok=True)
         return [type("Arquivo", (), {"titulo": "Ata", "destino": destino})()]
 
+    def listar_arquivos_candidatos(self, linha, pdf_dir, chaves):
+        destino = Path(pdf_dir) / "ata.pdf"
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        return LoteArquivosPNCP(
+            prioritarios=[ArquivoPNCP("Ata", "https://example.test/ata.pdf", destino)]
+        )
+
     def baixar(self, arquivo):
         arquivo.destino.write_bytes(b"pdf")
         return True
@@ -48,6 +55,11 @@ class FakeParser:
         return ResultadoPDF(
             arquivo=str(caminho_pdf),
             cnpjs_total=["11.222.333/0001-81", "11.444.777/0001-61", "12.345.678/0001-95"],
+            evidencias=[
+                EvidenciaCNPJ("11222333000181", 1, "Vencedor 11.222.333/0001-81", "conflitante", "vencedor"),
+                EvidenciaCNPJ("11444777000161", 1, "Licitante 11.444.777/0001-61", "participante", "licitante"),
+                EvidenciaCNPJ("12345678000195", 1, "Órgão 12.345.678/0001-95", "conflitante", "orgao comprador"),
+            ],
         )
 
 
@@ -177,6 +189,165 @@ def test_funil_remove_orgao_comprador_por_cnpj_raiz():
     assert auditoria["metricas"]["cnpjs_ata_unicos"] == 1
     assert auditoria["metricas"]["removido_orgao"] == 1
     assert auditoria["registros"][0]["disposition"] == "removido_orgao"
+
+
+def test_funil_mantem_cnpj_incidental_como_inconclusivo():
+    auditoria = analise._montar_auditoria(
+        adjudicatarios=[{"cnpj": "11222333000181", "nome": "Vencedor"}],
+        cnpjs_ata={"11444777000161"},
+        orgao_cnpj="12345678000195",
+        enrichment=FakeEnrichment(),
+        evidencias=[
+            {
+                "cnpj": "11444777000161",
+                "category": "incidental",
+                "signal": "",
+                "origin_file": "anexo.pdf",
+            }
+        ],
+    )
+
+    assert auditoria["metricas"]["perdedores_final"] == 0
+    assert auditoria["metricas"]["candidatos_inconclusivos"] == 1
+    assert auditoria["registros"][-1]["reason"] == "sem_contexto_explicito"
+
+
+def test_funil_nao_confirma_perdedor_sem_vencedor_estruturado():
+    auditoria = analise._montar_auditoria(
+        adjudicatarios=[],
+        cnpjs_ata={"11444777000161"},
+        orgao_cnpj="12345678000195",
+        enrichment=FakeEnrichment(),
+        evidencias=[
+            {
+                "cnpj": "11444777000161",
+                "category": "participante",
+                "signal": "licitante",
+                "origin_file": "ata.pdf",
+            }
+        ],
+    )
+
+    assert auditoria["metricas"]["perdedores_final"] == 0
+    assert auditoria["registros"][-1]["reason"] == "vencedores_indisponiveis"
+
+
+def test_fallback_so_e_processado_quando_prioritario_nao_confirma_perdedor(monkeypatch, tmp_path):
+    class TwoPassDownloader(FakeDownloader):
+        def baixar(self, arquivo):
+            arquivo.destino.write_bytes(arquivo.destino.name.encode())
+            return True
+
+        def listar_arquivos_candidatos(self, linha, pdf_dir, chaves):
+            pdf_dir = Path(pdf_dir)
+            pdf_dir.mkdir(parents=True, exist_ok=True)
+            return LoteArquivosPNCP(
+                prioritarios=[
+                    ArquivoPNCP("Ata", "https://example.test/ata.pdf", pdf_dir / "priority.pdf")
+                ],
+                fallback=[
+                    ArquivoPNCP(
+                        "Documento complementar",
+                        "https://example.test/anexo.pdf",
+                        pdf_dir / "fallback.pdf",
+                        prioridade="fallback",
+                    )
+                ],
+            )
+
+    class TwoPassParser:
+        arquivos = []
+
+        def extrair_resultado(self, caminho_pdf):
+            self.arquivos.append(caminho_pdf.name)
+            categoria = "incidental" if caminho_pdf.name == "priority.pdf" else "participante"
+            return ResultadoPDF(
+                arquivo=str(caminho_pdf),
+                cnpjs_total=["11444777000161"],
+                evidencias=[
+                    EvidenciaCNPJ(
+                        "11444777000161",
+                        1,
+                        "Licitante 11.444.777/0001-61" if categoria == "participante" else "CNPJ cadastrado",
+                        categoria,
+                        "licitante" if categoria == "participante" else "",
+                    )
+                ],
+            )
+
+    monkeypatch.setattr(analise, "PNCPSearchService", FakeSearch)
+    monkeypatch.setattr(analise, "DownloaderService", TwoPassDownloader)
+    monkeypatch.setattr(analise, "PDFParserService", TwoPassParser)
+    monkeypatch.setattr(analise, "ResultadoService", FakeResultado)
+    monkeypatch.setattr(analise, "EnrichmentService", FakeEnrichment)
+    monkeypatch.setattr(analise, "PDF_DIR", tmp_path / "pdfs")
+    storage = Storage(tmp_path / "analise.db")
+    storage.criar_run("run-1")
+
+    resumo = analise.analisar(
+        "TI",
+        "2026-03-01",
+        "2026-06-01",
+        "SP",
+        10,
+        tmp_path / "analise.db",
+        run_id="run-1",
+    )
+
+    assert TwoPassParser.arquivos == ["priority.pdf", "fallback.pdf"]
+    assert resumo["documentos_prioritarios_lidos"] == 1
+    assert resumo["documentos_fallback_lidos"] == 1
+    assert resumo["perdedores_final"] == 1
+
+
+def test_fallback_nao_e_processado_quando_prioritario_confirma_perdedor(monkeypatch, tmp_path):
+    class ConfirmingParser:
+        arquivos = []
+
+        def extrair_resultado(self, caminho_pdf):
+            self.arquivos.append(caminho_pdf.name)
+            return ResultadoPDF(
+                arquivo=str(caminho_pdf),
+                cnpjs_total=["11444777000161"],
+                evidencias=[
+                    EvidenciaCNPJ(
+                        "11444777000161",
+                        1,
+                        "Licitante 11.444.777/0001-61",
+                        "participante",
+                        "licitante",
+                    )
+                ],
+            )
+
+    class TwoPassDownloader(FakeDownloader):
+        def listar_arquivos_candidatos(self, linha, pdf_dir, chaves):
+            pdf_dir = Path(pdf_dir)
+            pdf_dir.mkdir(parents=True, exist_ok=True)
+            return LoteArquivosPNCP(
+                prioritarios=[
+                    ArquivoPNCP("Ata", "https://example.test/ata.pdf", pdf_dir / "priority.pdf")
+                ],
+                fallback=[
+                    ArquivoPNCP(
+                        "Anexo",
+                        "https://example.test/anexo.pdf",
+                        pdf_dir / "fallback.pdf",
+                        prioridade="fallback",
+                    )
+                ],
+            )
+
+    monkeypatch.setattr(analise, "PNCPSearchService", FakeSearch)
+    monkeypatch.setattr(analise, "DownloaderService", TwoPassDownloader)
+    monkeypatch.setattr(analise, "PDFParserService", ConfirmingParser)
+    monkeypatch.setattr(analise, "ResultadoService", FakeResultado)
+    monkeypatch.setattr(analise, "EnrichmentService", FakeEnrichment)
+    monkeypatch.setattr(analise, "PDF_DIR", tmp_path / "pdfs")
+
+    analise.analisar("TI", "2026-03-01", "2026-06-01", "SP", 10, tmp_path / "analise.db")
+
+    assert ConfirmingParser.arquivos == ["priority.pdf"]
 
 
 def test_motivo_descarte_identifica_dispensa_e_inexigibilidade():

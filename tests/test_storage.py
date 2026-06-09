@@ -132,3 +132,44 @@ def test_storage_crud_perfis_busca(tmp_path):
     assert '"firewall"' in perfis[0]["termos_json"]
     assert storage.excluir_perfil(perfil_id) is True
     assert storage.listar_perfis() == []
+
+
+def test_storage_persiste_evidencias_contextuais(tmp_path):
+    storage = Storage(tmp_path / "analise.db")
+    storage.criar_run("run-1")
+    contrato_id = storage.salvar_contrato(
+        {
+            "run_id": "run-1",
+            "numero_controle": "controle-1",
+            "orgao_cnpj": "12345678000195",
+            "orgao_nome": "Órgão",
+            "uf": "SP",
+            "municipio": "São Paulo",
+            "ano": "2026",
+            "sequencial": "1",
+            "objeto": "Software",
+            "valor": "1000",
+            "data_publicacao": "2026-06-01",
+        },
+        [],
+    )
+
+    storage.salvar_evidencias_cnpj(
+        contrato_id,
+        "run-1",
+        [
+            {
+                "cnpj": "11444777000161",
+                "origin_file": "ata.pdf",
+                "scan_pass": "priority",
+                "page_number": 2,
+                "category": "participante",
+                "signal": "licitante",
+                "excerpt": "Licitante 11.444.777/0001-61",
+            }
+        ],
+    )
+
+    evidencias = storage.listar_evidencias_cnpj("run-1", contrato_id)
+    assert evidencias[0]["page_number"] == 2
+    assert evidencias[0]["category"] == "participante"

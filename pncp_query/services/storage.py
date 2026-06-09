@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _INITIALIZED_DBS: set[str] = set()
 
@@ -71,6 +71,19 @@ CREATE TABLE IF NOT EXISTS cnpjs_auditoria (
     UNIQUE (run_id, contrato_id, cnpj, disposition)
 );
 
+CREATE TABLE IF NOT EXISTS cnpj_evidencias (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    contrato_id INTEGER NOT NULL REFERENCES contratos(id) ON DELETE CASCADE,
+    cnpj TEXT NOT NULL,
+    origin_file TEXT NOT NULL,
+    scan_pass TEXT NOT NULL,
+    page_number INTEGER NOT NULL DEFAULT 0,
+    category TEXT NOT NULL,
+    signal TEXT NOT NULL DEFAULT '',
+    excerpt TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS metricas_funil (
     contrato_id INTEGER PRIMARY KEY REFERENCES contratos(id) ON DELETE CASCADE,
     run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -80,9 +93,15 @@ CREATE TABLE IF NOT EXISTS metricas_funil (
     removido_invalido INTEGER NOT NULL DEFAULT 0,
     removido_orgao INTEGER NOT NULL DEFAULT 0,
     removido_vencedor INTEGER NOT NULL DEFAULT 0,
+    candidatos_inconclusivos INTEGER NOT NULL DEFAULT 0,
     perdedores_final INTEGER NOT NULL DEFAULT 0,
     vencedores INTEGER NOT NULL DEFAULT 0,
-    resultado_final INTEGER NOT NULL DEFAULT 0
+    resultado_final INTEGER NOT NULL DEFAULT 0,
+    documentos_listados INTEGER NOT NULL DEFAULT 0,
+    documentos_prioritarios_lidos INTEGER NOT NULL DEFAULT 0,
+    documentos_fallback_lidos INTEGER NOT NULL DEFAULT 0,
+    documentos_ignorados INTEGER NOT NULL DEFAULT 0,
+    documentos_duplicados INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS perfis_busca (
@@ -95,6 +114,7 @@ CREATE TABLE IF NOT EXISTS perfis_busca (
 CREATE INDEX IF NOT EXISTS idx_contratos_uf ON contratos(uf);
 CREATE INDEX IF NOT EXISTS idx_contratos_run ON contratos(run_id);
 CREATE INDEX IF NOT EXISTS idx_auditoria_run_disposition ON cnpjs_auditoria(run_id, disposition);
+CREATE INDEX IF NOT EXISTS idx_evidencias_run_cnpj ON cnpj_evidencias(run_id, cnpj);
 """
 
 
@@ -139,6 +159,19 @@ class Storage:
                 conn.execute("ALTER TABLE participantes ADD COLUMN situacao_cadastral TEXT NOT NULL DEFAULT ''")
             except sqlite3.OperationalError:
                 pass
+        if current_version < 5:
+            for coluna in (
+                "candidatos_inconclusivos INTEGER NOT NULL DEFAULT 0",
+                "documentos_listados INTEGER NOT NULL DEFAULT 0",
+                "documentos_prioritarios_lidos INTEGER NOT NULL DEFAULT 0",
+                "documentos_fallback_lidos INTEGER NOT NULL DEFAULT 0",
+                "documentos_ignorados INTEGER NOT NULL DEFAULT 0",
+                "documentos_duplicados INTEGER NOT NULL DEFAULT 0",
+            ):
+                try:
+                    conn.execute(f"ALTER TABLE metricas_funil ADD COLUMN {coluna}")
+                except sqlite3.OperationalError:
+                    pass
             try:
                 conn.execute("ALTER TABLE cnpjs_auditoria ADD COLUMN situacao_cadastral TEXT NOT NULL DEFAULT ''")
             except sqlite3.OperationalError:
@@ -357,6 +390,40 @@ class Storage:
                     ),
                 )
 
+    def salvar_evidencias_cnpj(self, contrato_id, run_id, evidencias):
+        with self.connect() as conn:
+            conn.execute("DELETE FROM cnpj_evidencias WHERE contrato_id = ?", (contrato_id,))
+            for evidencia in evidencias:
+                conn.execute(
+                    """
+                    INSERT INTO cnpj_evidencias
+                        (run_id, contrato_id, cnpj, origin_file, scan_pass,
+                         page_number, category, signal, excerpt)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        run_id,
+                        contrato_id,
+                        evidencia["cnpj"],
+                        evidencia["origin_file"],
+                        evidencia["scan_pass"],
+                        evidencia.get("page_number", 0),
+                        evidencia["category"],
+                        evidencia.get("signal", ""),
+                        evidencia.get("excerpt", ""),
+                    ),
+                )
+
+    def listar_evidencias_cnpj(self, run_id, contrato_id=None):
+        query = "SELECT * FROM cnpj_evidencias WHERE run_id = ?"
+        params = [run_id]
+        if contrato_id is not None:
+            query += " AND contrato_id = ?"
+            params.append(contrato_id)
+        query += " ORDER BY contrato_id, cnpj, page_number, id"
+        with self.connect() as conn:
+            return [dict(row) for row in conn.execute(query, params).fetchall()]
+
     def salvar_metricas_funil(self, contrato_id, run_id, metricas):
         valores = {
             "atas_lidas": 0,
@@ -365,9 +432,15 @@ class Storage:
             "removido_invalido": 0,
             "removido_orgao": 0,
             "removido_vencedor": 0,
+            "candidatos_inconclusivos": 0,
             "perdedores_final": 0,
             "vencedores": 0,
             "resultado_final": 0,
+            "documentos_listados": 0,
+            "documentos_prioritarios_lidos": 0,
+            "documentos_fallback_lidos": 0,
+            "documentos_ignorados": 0,
+            "documentos_duplicados": 0,
             **metricas,
         }
         with self.connect() as conn:
@@ -376,10 +449,14 @@ class Storage:
                 INSERT INTO metricas_funil
                     (contrato_id, run_id, atas_lidas, atas_falhas, cnpjs_ata_unicos,
                      removido_invalido, removido_orgao, removido_vencedor,
-                     perdedores_final, vencedores, resultado_final)
+                     candidatos_inconclusivos, perdedores_final, vencedores, resultado_final,
+                     documentos_listados, documentos_prioritarios_lidos,
+                     documentos_fallback_lidos, documentos_ignorados, documentos_duplicados)
                 VALUES (:contrato_id, :run_id, :atas_lidas, :atas_falhas, :cnpjs_ata_unicos,
                         :removido_invalido, :removido_orgao, :removido_vencedor,
-                        :perdedores_final, :vencedores, :resultado_final)
+                        :candidatos_inconclusivos, :perdedores_final, :vencedores, :resultado_final,
+                        :documentos_listados, :documentos_prioritarios_lidos,
+                        :documentos_fallback_lidos, :documentos_ignorados, :documentos_duplicados)
                 ON CONFLICT(contrato_id) DO UPDATE SET
                     atas_lidas=excluded.atas_lidas,
                     atas_falhas=excluded.atas_falhas,
@@ -387,9 +464,15 @@ class Storage:
                     removido_invalido=excluded.removido_invalido,
                     removido_orgao=excluded.removido_orgao,
                     removido_vencedor=excluded.removido_vencedor,
+                    candidatos_inconclusivos=excluded.candidatos_inconclusivos,
                     perdedores_final=excluded.perdedores_final,
                     vencedores=excluded.vencedores,
-                    resultado_final=excluded.resultado_final
+                    resultado_final=excluded.resultado_final,
+                    documentos_listados=excluded.documentos_listados,
+                    documentos_prioritarios_lidos=excluded.documentos_prioritarios_lidos,
+                    documentos_fallback_lidos=excluded.documentos_fallback_lidos,
+                    documentos_ignorados=excluded.documentos_ignorados,
+                    documentos_duplicados=excluded.documentos_duplicados
                 """,
                 {"contrato_id": contrato_id, "run_id": run_id, **valores},
             )
@@ -415,9 +498,15 @@ class Storage:
                     COALESCE(SUM(removido_invalido), 0) AS removido_invalido,
                     COALESCE(SUM(removido_orgao), 0) AS removido_orgao,
                     COALESCE(SUM(removido_vencedor), 0) AS removido_vencedor,
+                    COALESCE(SUM(candidatos_inconclusivos), 0) AS candidatos_inconclusivos,
                     COALESCE(SUM(perdedores_final), 0) AS perdedores_final,
                     COALESCE(SUM(vencedores), 0) AS vencedores,
-                    COALESCE(SUM(resultado_final), 0) AS resultado_final
+                    COALESCE(SUM(resultado_final), 0) AS resultado_final,
+                    COALESCE(SUM(documentos_listados), 0) AS documentos_listados,
+                    COALESCE(SUM(documentos_prioritarios_lidos), 0) AS documentos_prioritarios_lidos,
+                    COALESCE(SUM(documentos_fallback_lidos), 0) AS documentos_fallback_lidos,
+                    COALESCE(SUM(documentos_ignorados), 0) AS documentos_ignorados,
+                    COALESCE(SUM(documentos_duplicados), 0) AS documentos_duplicados
                 FROM metricas_funil
                 WHERE run_id = ?
                 """,
