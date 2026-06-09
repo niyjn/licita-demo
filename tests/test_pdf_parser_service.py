@@ -9,7 +9,6 @@ from pncp_query.services.pdf_parser_service import PDFParserService
 def test_extrair_resultado_flow(mock_extract):
     service = PDFParserService()
 
-    # Mock text extraction returning two CNPJs and the page count.
     mock_extract.return_value = (
         "Objeto: Aquisição de licenças de software e serviços de TI.\n"
         "Vencedor homologado: 11.222.333/0001-81\n"
@@ -23,7 +22,7 @@ def test_extrair_resultado_flow(mock_extract):
     assert res.page_count == 2
     assert "11222333000181" in res.cnpjs_total
     assert "22333444000102" in res.cnpjs_total
-    assert {item.categoria for item in res.evidencias} == {"conflitante", "participante"}
+    assert {item.categoria for item in res.evidencias} == {"vencedor", "participante"}
 
 
 @patch.object(PDFParserService, "_extrair_texto_nativo")
@@ -48,7 +47,7 @@ def test_extrai_cnpj_pontuado_continuo_e_separado_com_pagina(mock_extract):
 
 
 @patch.object(PDFParserService, "_extrair_texto_nativo")
-def test_sinal_conflitante_prevalece_sobre_contexto_de_participacao(mock_extract):
+def test_sinal_de_vencedor_prevalece_sobre_contexto_de_participacao(mock_extract):
     service = PDFParserService()
     mock_extract.return_value = (
         "Licitante vencedor e adjudicatário: 11.222.333/0001-81",
@@ -57,5 +56,45 @@ def test_sinal_conflitante_prevalece_sobre_contexto_de_participacao(mock_extract
 
     resultado = service.extrair_resultado(Path("dummy.pdf"))
 
-    assert resultado.evidencias[0].categoria == "conflitante"
+    assert resultado.evidencias[0].categoria == "vencedor"
     assert resultado.evidencias[0].sinal == "vencedor"
+
+
+@patch.object(PDFParserService, "_extrair_texto_nativo")
+def test_sinal_de_contratante_continua_conflitante(mock_extract):
+    service = PDFParserService()
+    mock_extract.return_value = (
+        "CNPJ da contratante: 11.222.333/0001-81",
+        1,
+    )
+
+    resultado = service.extrair_resultado(Path("dummy.pdf"))
+
+    assert resultado.evidencias[0].categoria == "conflitante"
+    assert resultado.evidencias[0].sinal == "contratante"
+
+
+@patch.object(PDFParserService, "_extrair_texto_nativo")
+def test_sinal_de_contato_nao_virou_conflito(mock_extract):
+    service = PDFParserService()
+    mock_extract.return_value = (
+        "Contato: 11.222.333/0001-81",
+        1,
+    )
+
+    resultado = service.extrair_resultado(Path("dummy.pdf"))
+
+    assert resultado.evidencias[0].categoria == "incidental"
+
+
+@patch.object(PDFParserService, "_extrair_texto_nativo")
+def test_sinal_de_responsavel_mais_proposta_permanece_participante(mock_extract):
+    service = PDFParserService()
+    mock_extract.return_value = (
+        "Responsavel pela proposta: 11.222.333/0001-81",
+        1,
+    )
+
+    resultado = service.extrair_resultado(Path("dummy.pdf"))
+
+    assert resultado.evidencias[0].categoria == "incidental"

@@ -36,7 +36,7 @@ PARTICIPANT_SIGNALS = (
     "desclassificado",
     "desclassificacao",
 )
-CONFLICT_SIGNALS = (
+ADJUDICATION_SIGNALS = (
     "vencedor",
     "vencedora",
     "adjudicatario",
@@ -45,13 +45,13 @@ CONFLICT_SIGNALS = (
     "contratada",
     "homologado",
     "homologada",
+)
+CONFLICT_SIGNALS = (
     "orgao comprador",
     "contratante",
     "fiscal",
     "gestor",
-    "responsavel",
     "assinatura",
-    "contato",
 )
 
 
@@ -117,6 +117,9 @@ class PDFParserService:
         for sinal in CONFLICT_SIGNALS:
             if sinal in contexto:
                 return "conflitante", sinal
+        for sinal in ADJUDICATION_SIGNALS:
+            if sinal in contexto:
+                return "vencedor", sinal
         for sinal in PARTICIPANT_SIGNALS:
             if sinal in contexto:
                 return "participante", sinal
