@@ -1842,3 +1842,24 @@ tbody tr:hover td {
 .faq-content li + li {
   margin-top: 8px;
 }
+
+.evidence-entry {
+  min-width: 260px;
+  max-width: 420px;
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-muted);
+  overflow-wrap: anywhere;
+}
+
+.evidence-entry + .evidence-entry {
+  margin-top: 8px;
+}
+
+.evidence-entry span,
+.evidence-entry small {
+  color: var(--muted);
+  line-height: 1.35;
+}

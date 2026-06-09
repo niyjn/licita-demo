@@ -560,6 +560,14 @@ class Storage:
                         (contrato["id"],),
                     ).fetchall()
                 ]
+                contrato["evidencias"] = [
+                    dict(r)
+                    for r in conn.execute(
+                        "SELECT cnpj, origin_file, scan_pass, page_number, category, signal, excerpt "
+                        "FROM cnpj_evidencias WHERE contrato_id = ? ORDER BY cnpj, page_number, id",
+                        (contrato["id"],),
+                    ).fetchall()
+                ]
             return contratos
 
 

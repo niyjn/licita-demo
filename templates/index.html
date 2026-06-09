@@ -188,6 +188,10 @@
             <span>Coincide com vencedor</span>
             <strong>{{ resumo.removido_vencedor|default(0) }}</strong>
           </a>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='candidato_inconclusivo') if run else '#' }}">
+            <span>Candidatos inconclusivos</span>
+            <strong>{{ resumo.candidatos_inconclusivos|default(0) }}</strong>
+          </a>
           <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}">
             <span>Perdedores finais (atas)</span>
             <strong>{{ resumo.perdedores_final|default(resumo.perdedores|default(0)) }}</strong>
@@ -199,6 +203,22 @@
           <div class="metric">
             <span>Resultado final</span>
             <strong>{{ resumo.resultado_final|default(0) }}</strong>
+          </div>
+          <div class="metric">
+            <span>Documentos prioritários</span>
+            <strong>{{ resumo.documentos_prioritarios_lidos|default(0) }}</strong>
+          </div>
+          <div class="metric">
+            <span>Documentos fallback</span>
+            <strong>{{ resumo.documentos_fallback_lidos|default(0) }}</strong>
+          </div>
+          <div class="metric">
+            <span>Documentos ignorados</span>
+            <strong>{{ resumo.documentos_ignorados|default(0) }}</strong>
+          </div>
+          <div class="metric">
+            <span>Documentos duplicados</span>
+            <strong>{{ resumo.documentos_duplicados|default(0) }}</strong>
           </div>
         </div>
 
@@ -345,6 +365,7 @@
                                   <th>Origem / Proveniência</th>
                                   <th>Disposição</th>
                                   <th>Motivo / Raciocínio</th>
+                                  <th>Evidência documental</th>
                                   <th>Situação Cadastral</th>
                                 </tr>
                               </thead>
@@ -361,6 +382,17 @@
                                     </td>
                                     <td><span class="pill">{{ item.disposition_label }}</span></td>
                                     <td><small class="muted">{{ item.reason_label }}</small></td>
+                                    <td>
+                                      {% for evidencia in item.evidencias %}
+                                        <div class="evidence-entry">
+                                          <strong>{{ evidencia.origin_file }}</strong>
+                                          <span>Página {{ evidencia.page_number }} · {{ evidencia.scan_pass }}</span>
+                                          <small>{{ evidencia.excerpt }}</small>
+                                        </div>
+                                      {% else %}
+                                        <span class="muted">Sem evidência PDF associada</span>
+                                      {% endfor %}
+                                    </td>
                                     <td>
                                       {% if item.situacao_cadastral %}
                                         <span class="pill {% if item.situacao_cadastral == 'ATIVA' %}success{% endif %}">{{ item.situacao_cadastral }}</span>
@@ -653,6 +685,7 @@
                 <th>CNPJ</th>
                 <th>Nome da Empresa</th>
                 <th>Origem</th>
+                <th>Evidência</th>
                 <th>Situação Cadastral</th>
               </tr>
             </thead>
@@ -663,6 +696,12 @@
             const sourceText = c.source === 'ata' ? 'PDF da Ata' : 'Estruturada (PNCP)';
             const escapedNome = c.nome ? escapeHtml(c.nome) : '<span class="muted">Não identificado</span>';
             const escapedCnpj = escapeHtml(c.cnpj);
+            const evidencia = (c.evidencias || [])[0];
+            const evidenciaHtml = evidencia
+              ? `<strong>${escapeHtml(evidencia.origin_file)}</strong><br>
+                 <span class="muted">Página ${escapeHtml(evidencia.page_number)} · ${escapeHtml(evidencia.scan_pass)}</span><br>
+                 <small>${escapeHtml(evidencia.excerpt)}</small>`
+              : `<span class="muted">${escapeHtml(c.reason || 'Sem evidência PDF associada')}</span>`;
             
             html += `<tr>
               <td><code>${escapedCnpj}</code></td>
@@ -671,6 +710,7 @@
                 <strong>${sourceText}</strong>
                 ${c.origin_file ? `<br><span class="muted" style="font-size: 10px;">Arq: ${escapeHtml(c.origin_file)}</span>` : ''}
               </td>
+              <td>${evidenciaHtml}</td>
               <td><span class="pill ${sit === 'ATIVA' ? 'success' : ''}">${sit}</span></td>
             </tr>`;
           });

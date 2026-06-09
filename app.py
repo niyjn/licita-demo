@@ -20,6 +20,7 @@ AREA_LABELS = {
 }
 
 DISPOSITION_LABELS = {
+    "candidato_inconclusivo": "Candidato inconclusivo",
     "perdedor_final": "Perdedor final",
     "removido_invalido": "Removido por dígito inválido",
     "removido_orgao": "Removido por órgão comprador",
@@ -31,10 +32,14 @@ REASON_LABELS = {
     "cnpj_valido_da_ata": "CNPJ válido da ata",
     "coincidente_com_vencedor": "Coincide com vencedor",
     "digito_verificador_invalido": "Dígito verificador inválido",
+    "evidencia_conflitante": "Evidência conflitante no documento",
+    "evidencia_explicita_participacao": "Participação explícita no documento",
     "orgao_comprador": "Órgão comprador",
     "resultado_pncp_estruturado": "Resultado estruturado do PNCP",
+    "sem_contexto_explicito": "CNPJ sem contexto explícito de participação",
     "sem_perdedores_na_ata": "Sem perdedores na ata",
     "sem_vencedor_estruturado": "Sem vencedor estruturado",
+    "vencedores_indisponiveis": "Vencedores estruturados indisponíveis",
 }
 
 STATUS_LABELS = {
@@ -129,7 +134,13 @@ def create_app(config=None):
     @app.get("/analises/<run_id>/cnpjs")
     def listar_cnpjs(run_id):
         disposition = request.args.get("disposition")
-        registros = Storage(app.config["DB_PATH"]).listar_cnpjs_auditoria(run_id, disposition=disposition)
+        storage = Storage(app.config["DB_PATH"])
+        registros = storage.listar_cnpjs_auditoria(run_id, disposition=disposition)
+        evidencias = {}
+        for evidencia in storage.listar_evidencias_cnpj(run_id):
+            evidencias.setdefault(evidencia["cnpj"], []).append(evidencia)
+        for registro in registros:
+            registro["evidencias"] = evidencias.get(registro["cnpj"], [])
         return jsonify({"run_id": run_id, "disposition": disposition, "cnpjs": registros})
 
     def _render_run(db_path, run_id):
@@ -324,7 +335,12 @@ def _contrato_view(contrato):
     for item in contrato.get("auditoria", []):
         item["disposition_label"] = DISPOSITION_LABELS.get(item.get("disposition"), item.get("disposition", ""))
         item["reason_label"] = _rotulo_motivo(item.get("reason"))
-        
+        item["evidencias"] = [
+            evidencia
+            for evidencia in contrato.get("evidencias", [])
+            if evidencia.get("cnpj") == item.get("cnpj")
+        ]
+
     return contrato
 
 

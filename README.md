@@ -12,7 +12,7 @@ CNPJ e nome — junto de um **relatório de qualidade reconciliável** dos dados
 
 1. **Busca** compras no PNCP por palavras-chave da área, período e UF (filtro `ufs` na API).
 2. **Vencedores** vêm da API estruturada de resultados do PNCP (CNPJ, razão social e valor homologado) — sem depender de PDF.
-3. **Demais participantes** são extraídos do texto das **atas em PDF** (parsing nativo + fallback de OCR), validados e enriquecidos com a razão social via [BrasilAPI](https://brasilapi.com.br).
+3. **Demais participantes** só são confirmados quando um PDF apresenta contexto explícito de participação e o CNPJ não pertence ao vencedor nem ao órgão comprador.
 4. **Persiste** tudo em SQLite e exibe numa interface server-rendered (Flask + Jinja2).
 
 As áreas de exemplo disponíveis são `TI`, `ENGENHARIA` e `SAUDE`, e o filtro cobre as 27 UFs.
@@ -27,7 +27,8 @@ CNPJs únicos extraídos das atas ...... X
   − dígito verificador inválido ...... a
   − órgão comprador .................. b
   − coincidente com o vencedor ....... c
-= Participantes no resultado final ... Y     (X = a + b + c + Y, por construção)
+  − candidato inconclusivo ............ d
+= Perdedores confirmados .............. Y     (X = a + b + c + d + Y)
 
 Vencedores (fonte estruturada PNCP) .. Z     (não passam pela limpeza)
 Resultado final = Y + Z
@@ -35,6 +36,11 @@ Resultado final = Y + Z
 
 Cada número é clicável e lista os CNPJs daquele estágio, com a fonte (`estruturada` ou `ata`)
 e o motivo da remoção. Vencedores nunca entram em `X`, porque vêm de fonte diferente dos PDFs.
+
+Os documentos são processados em duas passagens: primeiro atas, julgamentos, classificações,
+habilitações, propostas e resultados; se ninguém for confirmado, até três PDFs adicionais são
+processados como fallback. Cada arquivo é limitado a 15 MB. Sem vencedor estruturado ou sem
+contexto explícito no PDF, o CNPJ permanece inconclusivo e não entra no resultado final.
 
 > [!NOTE]
 > **Heurística de Órgão Comprador Aprimorada:** O descarte do órgão comprador (filtro `b`) 

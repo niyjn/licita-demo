@@ -280,12 +280,28 @@ def test_endpoint_cnpjs_filtra_por_disposition(tmp_path):
             {"cnpj": "11222333000181", "source": "estruturada", "disposition": "vencedor"},
         ],
     )
+    storage.salvar_evidencias_cnpj(
+        contrato_id,
+        "run-1",
+        [
+            {
+                "cnpj": "11444777000161",
+                "origin_file": "ata.pdf",
+                "scan_pass": "priority",
+                "page_number": 3,
+                "category": "participante",
+                "signal": "licitante",
+                "excerpt": "Licitante 11.444.777/0001-61",
+            }
+        ],
+    )
     app = create_app({"TESTING": True, "DB_PATH": db_path})
 
     response = app.test_client().get("/analises/run-1/cnpjs?disposition=perdedor_final")
 
     assert response.status_code == 200
     assert [item["cnpj"] for item in response.json["cnpjs"]] == ["11444777000161"]
+    assert response.json["cnpjs"][0]["evidencias"][0]["page_number"] == 3
 
 
 def test_titulo_limpo_remove_prefixo_burocratico():
