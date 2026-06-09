@@ -1701,3 +1701,105 @@ tbody tr:hover td {
   margin: 0;
   min-width: 800px;
 }
+
+/* ============================================================
+   18. RUN HISTORY & FREE SEARCH
+   ============================================================ */
+.runs-page {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.runs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.runs-header h1 {
+  margin: 4px 0 0;
+}
+
+.runs-rail {
+  position: static;
+  max-height: none;
+  margin-top: 16px;
+}
+
+.runs-rail .job-list {
+  overflow: visible;
+}
+
+.runs-rail .job-item {
+  cursor: default;
+}
+
+.runs-rail .job-item > a {
+  display: block;
+}
+
+.run-delete-form {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.search-mode-toggle,
+.profile-actions,
+.field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-mode-toggle .btn {
+  flex: 1;
+}
+
+.btn.selected {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.free-search-fields {
+  display: grid;
+  gap: 16px;
+}
+
+.free-search-fields[hidden] {
+  display: none;
+}
+
+.field-label-row {
+  justify-content: space-between;
+}
+
+.icon-button.compact {
+  width: 26px;
+  height: 26px;
+}
+
+.filters textarea {
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.profile-actions .btn {
+  flex: 1;
+}
+
+.faq-content {
+  padding: 4px 12px 12px;
+  line-height: 1.6;
+}
+
+.faq-content ul {
+  padding-left: 20px;
+}
+
+.faq-content li + li {
+  margin-top: 8px;
+}

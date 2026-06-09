@@ -19,7 +19,8 @@
       font-size: 13px;
     }
     .filters .field select,
-    .filters .field input {
+    .filters .field input,
+    .filters .field textarea {
       width: 100%;
       min-height: 38px;
       padding: 8px 12px;
@@ -42,6 +43,7 @@
     .alert,
     input,
     select,
+    textarea,
     button {
       border-radius: 0px !important;
       box-shadow: none !important;
@@ -57,7 +59,15 @@
         </div>
       </div>
       <form id="analysis-form" method="post" action="/analises" class="filters">
-        <label class="field">
+        <input type="hidden" name="modo" value="fixo">
+        <div class="field">
+          <span>Modo de busca</span>
+          <div class="search-mode-toggle" role="group" aria-label="Modo de busca">
+            <button class="btn btn-secondary selected" type="button" data-search-mode="fixo">Área fixa</button>
+            <button class="btn btn-secondary" type="button" data-search-mode="livre">Busca livre</button>
+          </div>
+        </div>
+        <label class="field" id="fixed-search-field">
           <span>Área</span>
           <select name="area">
             {% for area in areas %}
@@ -65,6 +75,25 @@
             {% endfor %}
           </select>
         </label>
+        <div class="free-search-fields" id="free-search-fields" hidden>
+          <label class="field">
+            <span class="field-label-row">
+              Busca livre
+              <button class="icon-button compact" id="free-search-help" type="button" aria-label="Como funciona a busca livre">?</button>
+            </span>
+            <textarea name="termos" rows="5" placeholder="firewall, data center, licenciamento"></textarea>
+          </label>
+          <div class="field">
+            <span>Modelos</span>
+            <select id="profile-select">
+              <option value="">Selecione um modelo</option>
+            </select>
+            <div class="profile-actions">
+              <button class="btn btn-secondary" id="save-profile" type="button">Salvar modelo</button>
+              <button class="btn btn-secondary" id="delete-profile" type="button" disabled>Excluir modelo</button>
+            </div>
+          </div>
+        </div>
         <label class="field">
           <span>UF</span>
           <select name="uf">
@@ -119,7 +148,12 @@
           <div class="run-fingerprint" style="margin-bottom: 20px; padding: 16px; background: var(--surface-muted); border: 1px solid var(--border-soft); border-radius: 0px; font-size: 13px; line-height: 1.6; color: var(--text);">
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 8px;">
               <div><strong>UF:</strong> <span class="pill" style="font-weight: bold;">{{ run_params.uf }}</span></div>
-              <div><strong>Área:</strong> <span class="pill" style="font-weight: bold;">{{ run_params.area }}</span></div>
+              <div>
+                <strong>{% if run_params.get('termos') %}Termos{% else %}Área{% endif %}:</strong>
+                <span class="pill" style="font-weight: bold;">
+                  {{ run_params.get('termos', [])|join(', ') if run_params.get('termos') else run_params.get('area', 'Não informado') }}
+                </span>
+              </div>
               <div><strong>Limite:</strong> <code>{{ run_params.limite }}</code></div>
               <div><strong>Período:</strong> <code>{{ run_params.data_inicial }}</code> a <code>{{ run_params.data_final }}</code></div>
             </div>
@@ -413,6 +447,110 @@
     const submitBtn = form.querySelector("button[type='submit']");
     const progressContainer = document.getElementById("progress-container");
     const progressBar = document.getElementById("progress-bar");
+    const modeInput = form.querySelector("input[name='modo']");
+    const areaSelect = form.querySelector("select[name='area']");
+    const termsInput = form.querySelector("textarea[name='termos']");
+    const fixedSearchField = document.getElementById("fixed-search-field");
+    const freeSearchFields = document.getElementById("free-search-fields");
+    const profileSelect = document.getElementById("profile-select");
+    const deleteProfileBtn = document.getElementById("delete-profile");
+
+    function setSearchMode(mode) {
+      modeInput.value = mode;
+      const livre = mode === "livre";
+      fixedSearchField.hidden = livre;
+      freeSearchFields.hidden = !livre;
+      areaSelect.disabled = livre;
+      termsInput.disabled = !livre;
+      document.querySelectorAll("[data-search-mode]").forEach(button => {
+        button.classList.toggle("selected", button.dataset.searchMode === mode);
+      });
+    }
+
+    function setFormDisabled(disabled) {
+      form.querySelectorAll("input, select, textarea, button").forEach(element => {
+        element.disabled = disabled;
+      });
+      if (!disabled) {
+        setSearchMode(modeInput.value);
+        deleteProfileBtn.disabled = !profileSelect.value;
+      }
+    }
+
+    document.querySelectorAll("[data-search-mode]").forEach(button => {
+      button.addEventListener("click", () => setSearchMode(button.dataset.searchMode));
+    });
+    setSearchMode("fixo");
+
+    async function loadProfiles(selectedId = "") {
+      const response = await fetch("/perfis");
+      const payload = await response.json();
+      profileSelect.innerHTML = '<option value="">Selecione um modelo</option>';
+      (payload.perfis || []).forEach(profile => {
+        const option = document.createElement("option");
+        option.value = String(profile.id);
+        option.textContent = profile.nome;
+        option.dataset.terms = profile.termos.join(", ");
+        profileSelect.appendChild(option);
+      });
+      if (selectedId) profileSelect.value = String(selectedId);
+      deleteProfileBtn.disabled = !profileSelect.value;
+    }
+
+    profileSelect.addEventListener("change", () => {
+      const option = profileSelect.selectedOptions[0];
+      if (option && option.value) termsInput.value = option.dataset.terms || "";
+      deleteProfileBtn.disabled = !profileSelect.value;
+    });
+
+    document.getElementById("save-profile").addEventListener("click", async () => {
+      const nome = window.prompt("Nome do modelo:");
+      if (!nome) return;
+      const response = await fetch("/perfis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome, termos: termsInput.value }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        statusEl.textContent = payload.message || "Não foi possível salvar o modelo.";
+        return;
+      }
+      await loadProfiles(payload.id);
+      statusEl.textContent = "Modelo salvo.";
+    });
+
+    deleteProfileBtn.addEventListener("click", async () => {
+      if (!profileSelect.value || !window.confirm("Excluir este modelo?")) return;
+      const response = await fetch(`/perfis/${profileSelect.value}`, { method: "DELETE" });
+      if (!response.ok) {
+        statusEl.textContent = "Não foi possível excluir o modelo.";
+        return;
+      }
+      await loadProfiles();
+      statusEl.textContent = "Modelo excluído.";
+    });
+
+    loadProfiles().catch(() => {
+      statusEl.textContent = "Não foi possível carregar os modelos salvos.";
+    });
+
+    document.getElementById("free-search-help").addEventListener("click", () => {
+      document.getElementById("modal-title").textContent = "Como funciona a busca livre";
+      document.getElementById("modal-body").innerHTML = `
+        <div class="faq-content">
+          <p>Cada termo dispara 3 buscas na API do PNCP: edital encerrado, edital homologado e contrato vigente.</p>
+          <ul>
+            <li>Mais termos geram mais chamadas e uma análise mais lenta.</li>
+            <li>Use preferencialmente até 10 termos específicos.</li>
+            <li>O limite controla resultados por combinação.</li>
+            <li>Contratos repetidos entre termos são deduplicados.</li>
+            <li>A análise roda em segundo plano e fica salva no Histórico.</li>
+            <li>Nomes de participantes dependem das respostas do PNCP e da BrasilAPI e podem ficar indisponíveis.</li>
+          </ul>
+        </div>`;
+      document.getElementById("metric-modal").style.display = "flex";
+    });
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -420,8 +558,7 @@
       const formData = new FormData(form);
       
       // Disable form inputs to prevent double submits
-      submitBtn.disabled = true;
-      form.querySelectorAll("input, select").forEach(el => el.disabled = true);
+      setFormDisabled(true);
       statusEl.textContent = "Criando análise...";
       
       // Reset & show progress bar
@@ -433,8 +570,7 @@
 
       if (!response.ok) {
         statusEl.textContent = payload.message || payload.error || "Erro desconhecido.";
-        submitBtn.disabled = false;
-        form.querySelectorAll("input, select").forEach(el => el.disabled = false);
+        setFormDisabled(false);
         progressContainer.style.display = "none";
         return;
       }
@@ -456,8 +592,7 @@
         } else if (status.status === "error") {
           statusEl.textContent = status.error || status.message;
           // Re-enable form
-          submitBtn.disabled = false;
-          form.querySelectorAll("input, select").forEach(el => el.disabled = false);
+          setFormDisabled(false);
         } else {
           setTimeout(poll, 1200);
         }
