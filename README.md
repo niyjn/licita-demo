@@ -45,7 +45,9 @@ e o motivo da remoção. Vencedores nunca entram em `X`, porque vêm de fonte di
 ## Arquitetura
 
 - **Flask + Jinja2** — frontend server-rendered, estilizado pelo CSS em `design-system/`.
-- **Execução assíncrona** — `POST /analises` cria uma run, dispara a análise numa thread e retorna `run_id`; o front faz polling em `GET /analises/<run_id>/status`. O status vive no SQLite (não em memória), então funciona com múltiplos workers.
+- **Execução assíncrona simples** — `POST /analises` cria uma run, dispara a análise numa thread e retorna `run_id`; o front faz polling em `GET /analises/<run_id>/status`.
+- **Uma análise ativa por vez** — o SQLite impede atomicamente uma segunda run em estado `queued/running`. O container usa um worker Gunicorn com quatro threads, adequado ao escopo demonstrativo.
+- **Histórico e modelos** — runs ficam disponíveis em `/runs`; termos livres podem ser salvos como modelos reutilizáveis.
 - **SQLite** (WAL + `busy_timeout`) — sem servidor de banco; roda inteiro em um container.
 - **Serviços** — busca PNCP, resultado estruturado, downloader de atas (download atômico), parser PDF/OCR, validação de CNPJ e enriquecimento por BrasilAPI.
 
