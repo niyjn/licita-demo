@@ -82,15 +82,6 @@ TERMOS_TI_QUALIFICACAO = [
     "servidor",
 ]
 
-TERMOS_EXCLUSAO_SETORIAL = [
-    "limpeza",
-    "vigilancia",
-    "merenda",
-    "jardinagem",
-    "portaria",
-    "mao de obra",
-]
-
 AREAS = {
     "TI": TERMOS_TI_QUALIFICACAO,
     "ENGENHARIA": [
@@ -181,19 +172,6 @@ PALAVRAS_ARQUIVO_EXCLUIR = [
     "termo de referencia",
     "oficial",
 ]
-
-PADROES_ADJUDICATARIO = [
-    "proposta adjudicada",
-    "adjudicacao",
-    "adjudicar",
-    "adjudicou",
-    "adjudicado e homologado",
-    "adjudicada e homologada",
-    "homologacao",
-    "homologado",
-    "melhor proposta",
-]
-
 
 def janela_padrao():
     hoje = datetime.now()

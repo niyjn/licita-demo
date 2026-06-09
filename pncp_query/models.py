@@ -35,11 +35,6 @@ class ArquivoPNCP:
 class ResultadoPDF:
     arquivo: str
     cnpjs_total: list[str] = field(default_factory=list)
-    cnpjs_adjudicatarios: list[str] = field(default_factory=list)
-    cnpjs_participantes: list[str] = field(default_factory=list)
-    qualificado_ti: bool = False
-    motivos_qualificacao: list[str] = field(default_factory=list)
-    motivos_exclusao: list[str] = field(default_factory=list)
     origem_texto: str = "pdfplumber"
     erro: str = ""
     ocr_attempted: bool = False
