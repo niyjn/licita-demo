@@ -137,6 +137,12 @@ SEARCH_PROFILES = [
 PALAVRAS_ARQUIVO = [
     "ata",
     "aceite",
+    "classificacao",
+    "habilitacao",
+    "inabilitacao",
+    "desclassificacao",
+    "proposta",
+    "resultado",
     "relatorio",
     "termo_aceite",
     "termo aceite",
@@ -150,8 +156,16 @@ PALAVRAS_ARQUIVO = [
 PALAVRAS_ARQUIVO_FORTE = [
     "ata",
     "aceite",
+    "classificacao",
+    "habilitacao",
+    "inabilitacao",
+    "desclassificacao",
+    "proposta",
+    "resultado",
     "relatorio",
     "julgamento",
+    "adjudicacao",
+    "homologacao",
 ]
 
 PALAVRAS_ARQUIVO_EXCLUIR = [
@@ -172,6 +186,9 @@ PALAVRAS_ARQUIVO_EXCLUIR = [
     "termo de referencia",
     "oficial",
 ]
+
+PDF_MAX_BYTES = _env_int("PDF_MAX_BYTES", 15 * 1024 * 1024)
+PDF_FALLBACK_MAX_FILES = _env_int("PDF_FALLBACK_MAX_FILES", 3)
 
 def janela_padrao():
     hoje = datetime.now()

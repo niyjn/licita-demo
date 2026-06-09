@@ -6,8 +6,13 @@ from urllib.parse import urljoin
 
 import requests
 
-from pncp_query.config import PALAVRAS_ARQUIVO, PALAVRAS_ARQUIVO_EXCLUIR, PALAVRAS_ARQUIVO_FORTE
-from pncp_query.models import ArquivoPNCP
+from pncp_query.config import (
+    PALAVRAS_ARQUIVO,
+    PALAVRAS_ARQUIVO_EXCLUIR,
+    PALAVRAS_ARQUIVO_FORTE,
+    PDF_MAX_BYTES,
+)
+from pncp_query.models import ArquivoPNCP, LoteArquivosPNCP
 from pncp_query.services.common import nome_seguro, somente_digitos
 from pncp_query.services.http_client import HttpClient
 
@@ -16,6 +21,10 @@ NUMERO_CONTROLE_COMPRA_RE = re.compile(r"(?P<cnpj>\d{14})-1-(?P<sequencial>\d+)/
 
 
 class PNCPJsonError(ValueError):
+    pass
+
+
+class DocumentoInvalidoError(ValueError):
     pass
 
 
@@ -33,23 +42,46 @@ class DownloaderService:
         self._cache_arquivos = {}
 
     def listar_arquivos_relevantes(self, linha_licitacao, pdf_dir: Path, chaves_compra=None):
+        return self.listar_arquivos_candidatos(
+            linha_licitacao,
+            pdf_dir,
+            chaves_compra,
+        ).prioritarios
+
+    def listar_arquivos_candidatos(self, linha_licitacao, pdf_dir: Path, chaves_compra=None):
         chaves_compra = chaves_compra or self.resolver_chaves_compra(linha_licitacao)
         if not chaves_compra:
-            return []
+            return LoteArquivosPNCP()
 
         orgao_cnpj, ano, numero = chaves_compra
         arquivos = self._listar_arquivos(orgao_cnpj, ano, numero)
-        relevantes = []
+        lote = LoteArquivosPNCP()
+        urls_vistas = set()
         for indice, arquivo in enumerate(arquivos, start=1):
             titulo = self._titulo(arquivo)
-            if not self._relevante(titulo):
-                continue
             url = self._url_download(arquivo, orgao_cnpj, ano, numero)
-            if not url:
+            if not url or url in urls_vistas:
+                lote.ignorados += 1
+                continue
+            urls_vistas.add(url)
+            categoria = self._classificar_documento(titulo, url, arquivo)
+            if categoria == "ignored":
+                lote.ignorados += 1
                 continue
             destino = pdf_dir / f"{orgao_cnpj}_{ano}_{numero}_{indice}_{nome_seguro(titulo)}.pdf"
-            relevantes.append(ArquivoPNCP(titulo=titulo, url=url, destino=destino))
-        return relevantes
+            sequencial = arquivo.get("sequencialDocumento") or arquivo.get("sequencial") or arquivo.get("id") or ""
+            candidato = ArquivoPNCP(
+                titulo=titulo,
+                url=url,
+                destino=destino,
+                prioridade=categoria,
+                sequencial=str(sequencial),
+            )
+            if categoria == "priority":
+                lote.prioritarios.append(candidato)
+            else:
+                lote.fallback.append(candidato)
+        return lote
 
     def resolver_chaves_compra(self, linha_licitacao):
         orgao_cnpj = somente_digitos(linha_licitacao.get("orgao_cnpj"))
@@ -85,8 +117,20 @@ class DownloaderService:
         temp_path.unlink(missing_ok=True)
         try:
             response = self._get(arquivo.url, timeout=120)
+            conteudo = response.content
+            if len(conteudo) > PDF_MAX_BYTES:
+                raise DocumentoInvalidoError(
+                    f"Documento excede o limite de {PDF_MAX_BYTES} bytes: {arquivo.titulo}"
+                )
+            content_type = str(getattr(response, "headers", {}).get("content-type", "")).lower()
+            if content_type and "pdf" not in content_type and "octet-stream" not in content_type:
+                raise DocumentoInvalidoError(
+                    f"Documento não é PDF (Content-Type {content_type}): {arquivo.titulo}"
+                )
+            if not conteudo.lstrip().startswith(b"%PDF"):
+                raise DocumentoInvalidoError(f"Documento sem assinatura PDF: {arquivo.titulo}")
             with temp_path.open("wb") as destino:
-                destino.write(response.content)
+                destino.write(conteudo)
             temp_path.replace(arquivo.destino)
         except Exception:
             temp_path.unlink(missing_ok=True)
@@ -152,17 +196,35 @@ class DownloaderService:
         return " ".join(partes) or "arquivo"
 
     def _relevante(self, titulo):
+        return self._classificar_documento(titulo, "", {}) == "priority"
+
+    def _classificar_documento(self, titulo, url, metadados):
         titulo_normalizado = self._normalizar_para_filtro(titulo)
         tem_palavra_alvo = any(self._contem_termo(titulo_normalizado, palavra) for palavra in PALAVRAS_ARQUIVO)
         tem_palavra_forte = any(self._contem_termo(titulo_normalizado, palavra) for palavra in PALAVRAS_ARQUIVO_FORTE)
         tem_exclusao = any(self._contem_termo(titulo_normalizado, palavra) for palavra in PALAVRAS_ARQUIVO_EXCLUIR)
 
-        if not tem_palavra_alvo:
-            return False
+        if not self._parece_pdf(titulo, url, metadados):
+            return "ignored"
+        if tem_palavra_forte or (tem_palavra_alvo and not tem_exclusao):
+            return "priority"
+        if tem_exclusao:
+            return "ignored"
+        return "fallback"
 
-        if tem_exclusao and not tem_palavra_forte:
+    def _parece_pdf(self, titulo, url, metadados):
+        texto = " ".join(
+            [
+                str(titulo),
+                str(url),
+                str(metadados.get("tipoDocumentoNome", "")),
+                str(metadados.get("tipoDocumento", "")),
+                str(metadados.get("nomeArquivo", "")),
+            ]
+        ).lower()
+        extensoes_nao_pdf = (".zip", ".rar", ".7z", ".xlsx", ".xls", ".csv", ".doc", ".docx", ".xml")
+        if any(extensao in texto for extensao in extensoes_nao_pdf):
             return False
-
         return True
 
     def _normalizar_para_filtro(self, valor):

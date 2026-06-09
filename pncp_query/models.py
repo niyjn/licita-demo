@@ -29,6 +29,15 @@ class ArquivoPNCP:
     titulo: str
     url: str
     destino: Path
+    prioridade: str = "priority"
+    sequencial: str = ""
+
+
+@dataclass
+class LoteArquivosPNCP:
+    prioritarios: list[ArquivoPNCP] = field(default_factory=list)
+    fallback: list[ArquivoPNCP] = field(default_factory=list)
+    ignorados: int = 0
 
 
 @dataclass
