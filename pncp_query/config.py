@@ -7,22 +7,28 @@ from dateutil.relativedelta import relativedelta
 BASE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = BASE_DIR / "output"
 
-# Try to write to OUTPUT_DIR, fallback to user home directory if not writable (e.g., Docker volume permission issues)
-_db_default = OUTPUT_DIR / "analise.db"
-_pdf_default = OUTPUT_DIR / "pdfs"
+# Try to write to resolved paths, fallback to home directory if not writable (e.g., Docker volume permission issues)
+_resolved_db_path = Path(os.getenv("DB_PATH", OUTPUT_DIR / "analise.db"))
+_resolved_pdf_dir = Path(os.getenv("PDF_DIR", OUTPUT_DIR / "pdfs"))
 
 try:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    _test_file = OUTPUT_DIR / ".write_test"
+    _resolved_db_path.parent.mkdir(parents=True, exist_ok=True)
+    # Test if parent directory is writable
+    _test_file = _resolved_db_path.parent / ".write_test"
     _test_file.touch()
     _test_file.unlink()
+    
+    # Test if the database file itself is writable if it exists
+    if _resolved_db_path.exists():
+        with open(_resolved_db_path, "a"):
+            pass
 except Exception:
     # Fallback to user home directory (always writable by the running user)
-    _db_default = Path.home() / "analise.db"
-    _pdf_default = Path.home() / "pdfs"
+    _resolved_db_path = Path.home() / "analise.db"
+    _resolved_pdf_dir = Path.home() / "pdfs"
 
-DB_PATH = Path(os.getenv("DB_PATH", _db_default))
-PDF_DIR = Path(os.getenv("PDF_DIR", _pdf_default))
+DB_PATH = _resolved_db_path
+PDF_DIR = _resolved_pdf_dir
 
 
 def _carregar_env_local():
