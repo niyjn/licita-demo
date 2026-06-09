@@ -65,6 +65,61 @@ def test_post_analises_grava_error_quando_thread_falha(tmp_path):
     assert status["error"] == "falha controlada"
 
 
+def test_post_analises_livre_normaliza_e_repassa_termos(tmp_path):
+    recebido = {}
+
+    def fake_analysis(
+        area,
+        data_inicial,
+        data_final,
+        uf,
+        limite,
+        db_path,
+        run_id=None,
+        progress=None,
+        termos=None,
+    ):
+        recebido.update(area=area, termos=termos)
+
+    app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db", "ANALYSIS_FUNC": fake_analysis})
+    client = app.test_client()
+
+    response = client.post(
+        "/analises",
+        json={"modo": "livre", "termos": " firewall,\nFirewall, data center, x ", "uf": "SP", "limite": 1},
+    )
+
+    assert response.status_code == 202
+    wait_status(client, response.json["run_id"], "done")
+    assert recebido == {"area": None, "termos": ["firewall", "data center"]}
+
+
+def test_post_analises_livre_rejeita_vazio_e_mais_de_doze_termos(tmp_path):
+    app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db"})
+    client = app.test_client()
+
+    vazio = client.post("/analises", json={"modo": "livre", "termos": "x, ,"})
+    excesso = client.post(
+        "/analises",
+        json={"modo": "livre", "termos": ",".join(f"termo-{indice}" for indice in range(13))},
+    )
+
+    assert vazio.status_code == 400
+    assert excesso.status_code == 400
+    assert "12 termos" in excesso.json["message"]
+
+
+def test_post_analises_rejeita_quando_ja_existe_run_ativa(tmp_path):
+    db_path = tmp_path / "analise.db"
+    Storage(db_path).criar_run("run-ativa")
+    app = create_app({"TESTING": True, "DB_PATH": db_path})
+
+    response = app.test_client().post("/analises", json={"area": "TI"})
+
+    assert response.status_code == 409
+    assert response.json["error"] == "analysis_in_progress"
+
+
 def test_status_retorna_404_para_run_inexistente(tmp_path):
     app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db"})
 
@@ -72,6 +127,43 @@ def test_status_retorna_404_para_run_inexistente(tmp_path):
 
     assert response.status_code == 404
     assert response.json == {"error": "run_not_found"}
+
+
+def test_historico_lista_runs_e_exclusao_recusa_run_ativa(tmp_path):
+    db_path = tmp_path / "analise.db"
+    storage = Storage(db_path)
+    storage.criar_run("run-final", params_json='{"modo":"livre","termos":["firewall"],"uf":"SP"}')
+    storage.atualizar_run("run-final", status="done")
+    storage.criar_run("run-ativa", params_json='{"area":"TI","uf":"SP"}')
+    app = create_app({"TESTING": True, "DB_PATH": db_path})
+    client = app.test_client()
+
+    historico = client.get("/runs")
+    exclusao_ativa = client.post("/analises/run-ativa/excluir")
+    exclusao_final = client.post("/analises/run-final/excluir")
+
+    assert historico.status_code == 200
+    assert b"firewall" in historico.data
+    assert b"Em execu" in historico.data
+    assert exclusao_ativa.status_code == 409
+    assert exclusao_final.status_code == 302
+    assert storage.obter_run("run-final") is None
+
+
+def test_crud_perfis_pelas_rotas(tmp_path):
+    app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db"})
+    client = app.test_client()
+
+    criado = client.post("/perfis", json={"nome": "Infra", "termos": "firewall, data center"})
+    duplicado = client.post("/perfis", json={"nome": "Infra", "termos": "servidor"})
+    listado = client.get("/perfis")
+    excluido = client.delete(f"/perfis/{criado.json['id']}")
+
+    assert criado.status_code == 201
+    assert criado.json["termos"] == ["firewall", "data center"]
+    assert duplicado.status_code == 409
+    assert listado.json["perfis"][0]["nome"] == "Infra"
+    assert excluido.status_code == 204
 
 
 def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(tmp_path):

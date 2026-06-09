@@ -1,11 +1,13 @@
 import json
 import re
+import sqlite3
 import unicodedata
+from math import ceil
 from pathlib import Path
 from threading import Thread
 from uuid import uuid4
 
-from flask import Flask, jsonify, make_response, render_template, request
+from flask import Flask, jsonify, make_response, redirect, render_template, request, url_for
 
 from analise import analisar
 from pncp_query.config import AREAS, DB_PATH, UFS, janela_padrao
@@ -41,6 +43,20 @@ STATUS_LABELS = {
     "vazio": "Vazio",
 }
 
+RUN_STATUS_LABELS = {
+    "queued": "Na fila",
+    "running": "Em execução",
+    "done": "Concluída",
+    "error": "Erro",
+}
+
+RUN_STATUS_TONES = {
+    "queued": "amber",
+    "running": "amber",
+    "done": "green",
+    "error": "red",
+}
+
 
 def create_app(config=None):
     app = Flask(
@@ -64,6 +80,51 @@ def create_app(config=None):
     @app.get("/analises/<run_id>")
     def ver_analise(run_id):
         return _render_run(app.config["DB_PATH"], run_id)
+
+    @app.get("/runs")
+    def listar_runs():
+        try:
+            pagina = max(1, int(request.args.get("page", 1)))
+        except ValueError:
+            pagina = 1
+        status = request.args.get("status") or None
+        if status not in {None, *RUN_STATUS_LABELS}:
+            return jsonify({"error": "invalid_status"}), 400
+
+        por_pagina = 20
+        storage = Storage(app.config["DB_PATH"])
+        total = storage.contar_runs(status=status)
+        total_paginas = max(1, ceil(total / por_pagina))
+        pagina = min(pagina, total_paginas)
+        runs = storage.listar_runs(
+            limit=por_pagina,
+            offset=(pagina - 1) * por_pagina,
+            status=status,
+        )
+        for run in runs:
+            run["status_label"] = RUN_STATUS_LABELS.get(run["status"], run["status"])
+            run["status_tone"] = RUN_STATUS_TONES.get(run["status"], "muted")
+            run["params"] = _json_objeto(run.get("params_json"))
+            run["titulo"] = _titulo_run(run["params"])
+        return render_template(
+            "runs.html",
+            runs=runs,
+            pagina=pagina,
+            total_paginas=total_paginas,
+            total=total,
+            status=status,
+        )
+
+    @app.post("/analises/<run_id>/excluir")
+    def excluir_analise(run_id):
+        storage = Storage(app.config["DB_PATH"])
+        run = storage.obter_run(run_id)
+        if not run:
+            return jsonify({"error": "run_not_found"}), 404
+        if run["status"] in {"queued", "running"}:
+            return jsonify({"error": "run_active", "message": "Uma análise ativa não pode ser excluída."}), 409
+        storage.excluir_run(run_id)
+        return redirect(url_for("listar_runs"))
 
     @app.get("/analises/<run_id>/cnpjs")
     def listar_cnpjs(run_id):
@@ -118,7 +179,17 @@ def create_app(config=None):
             return jsonify({"error": "invalid_input", "message": str(e)}), 400
         run_id = uuid4().hex
         storage = Storage(app.config["DB_PATH"])
-        storage.criar_run(run_id, params_json=_params_json(payload))
+        storage.limpar_runs_travadas(timeout_segundos=3600)
+        if not storage.criar_run_se_disponivel(run_id, params_json=_params_json(payload)):
+            return (
+                jsonify(
+                    {
+                        "error": "analysis_in_progress",
+                        "message": "Já existe uma análise em andamento. Aguarde a conclusão antes de iniciar outra.",
+                    }
+                ),
+                409,
+            )
 
         thread = Thread(
             target=_executar_analise_background,
@@ -127,6 +198,36 @@ def create_app(config=None):
         )
         thread.start()
         return jsonify({"run_id": run_id}), 202
+
+    @app.get("/perfis")
+    def listar_perfis():
+        perfis = []
+        for perfil in Storage(app.config["DB_PATH"]).listar_perfis():
+            perfil["termos"] = _json_lista(perfil.pop("termos_json", "[]"))
+            perfis.append(perfil)
+        return jsonify({"perfis": perfis})
+
+    @app.post("/perfis")
+    def criar_perfil():
+        data = request.get_json(silent=True) or request.form
+        nome = " ".join((data.get("nome") or "").split())
+        if not nome or len(nome) > 80:
+            return jsonify({"error": "invalid_name", "message": "Informe um nome de até 80 caracteres."}), 400
+        try:
+            termos = _normalizar_termos(data.get("termos"))
+        except ValueError as exc:
+            return jsonify({"error": "invalid_terms", "message": str(exc)}), 400
+        try:
+            perfil_id = Storage(app.config["DB_PATH"]).salvar_perfil(nome, termos)
+        except sqlite3.IntegrityError:
+            return jsonify({"error": "duplicate_name", "message": "Já existe um modelo com esse nome."}), 409
+        return jsonify({"id": perfil_id, "nome": nome, "termos": termos}), 201
+
+    @app.delete("/perfis/<int:perfil_id>")
+    def excluir_perfil(perfil_id):
+        if not Storage(app.config["DB_PATH"]).excluir_perfil(perfil_id):
+            return jsonify({"error": "profile_not_found"}), 404
+        return "", 204
 
     @app.get("/analises/<run_id>/status")
     def status_analise(run_id):
@@ -316,9 +417,22 @@ def _payload_analise():
     data = request.get_json(silent=True) or request.form
     inicio, fim = janela_padrao()
     
-    area = data.get("area") or "TI"
-    if area not in AREAS:
-        raise ValueError(f"Área inválida: {area}. Opções: {list(AREAS.keys())}")
+    termos_brutos = data.get("termos")
+    modo = (data.get("modo") or "").strip().lower()
+    if not modo:
+        modo = "livre" if str(termos_brutos or "").strip() else "fixo"
+    if modo not in {"fixo", "livre"}:
+        raise ValueError("Modo de busca inválido.")
+
+    area = data.get("area")
+    termos = []
+    if modo == "livre":
+        termos = _normalizar_termos(termos_brutos)
+        area = None
+    else:
+        area = area or "TI"
+        if area not in AREAS:
+            raise ValueError(f"Área inválida: {area}. Opções: {list(AREAS.keys())}")
         
     uf = (data.get("uf") or "SP").upper()
     if uf not in UFS:
@@ -344,7 +458,9 @@ def _payload_analise():
         raise ValueError("A data inicial não pode ser posterior à data final.")
         
     return {
+        "modo": modo,
         "area": area,
+        "termos": termos,
         "data_inicial": data_inicial,
         "data_final": data_final,
         "uf": uf,
@@ -356,6 +472,53 @@ def _params_json(payload):
     import json
 
     return json.dumps(payload, ensure_ascii=True, sort_keys=True)
+
+
+def _normalizar_termos(valor):
+    if isinstance(valor, list):
+        partes = valor
+    else:
+        partes = re.split(r"[,\r\n]+", str(valor or ""))
+    termos = []
+    vistos = set()
+    for parte in partes:
+        termo = " ".join(str(parte).split())
+        if len(termo) < 2:
+            continue
+        chave = termo.casefold()
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        termos.append(termo)
+    if not termos:
+        raise ValueError("Informe ao menos um termo com 2 ou mais caracteres.")
+    if len(termos) > 12:
+        raise ValueError("A busca livre aceita no máximo 12 termos.")
+    return termos
+
+
+def _json_objeto(valor):
+    try:
+        resultado = json.loads(valor or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return resultado if isinstance(resultado, dict) else {}
+
+
+def _json_lista(valor):
+    try:
+        resultado = json.loads(valor or "[]")
+    except (TypeError, ValueError):
+        return []
+    return resultado if isinstance(resultado, list) else []
+
+
+def _titulo_run(params):
+    termos = params.get("termos") or []
+    if termos:
+        return ", ".join(termos)
+    area = params.get("area")
+    return AREA_LABELS.get(area, area or "Análise sem parâmetros")
 
 
 def _executar_analise_background(run_id, payload, db_path, analysis_func):
@@ -375,6 +538,12 @@ def _executar_analise_background(run_id, payload, db_path, analysis_func):
                 progresso = min(99, int((atual / total) * 100))
             storage.atualizar_run(run_id, status="running", progress=progresso, message=evento["mensagem"])
 
+        argumentos = dict(
+            run_id=run_id,
+            progress=progress,
+        )
+        if payload.get("modo") == "livre":
+            argumentos["termos"] = payload["termos"]
         analysis_func(
             payload["area"],
             payload["data_inicial"],
@@ -382,8 +551,7 @@ def _executar_analise_background(run_id, payload, db_path, analysis_func):
             payload["uf"],
             payload["limite"],
             db_path,
-            run_id=run_id,
-            progress=progress,
+            **argumentos,
         )
     except Exception as exc:
         status_final = "error"

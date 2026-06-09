@@ -120,6 +120,34 @@ def test_analisar_persiste_funil_auditavel_por_run(monkeypatch, tmp_path):
     assert resumo["resultado_final"] == 2
 
 
+def test_analisar_busca_livre_usa_termos_em_vez_da_area(monkeypatch, tmp_path):
+    class CapturingSearch(FakeSearch):
+        termos = None
+
+        def buscar_iter(self, *args, **kwargs):
+            type(self).termos = kwargs["palavras_chave"]
+            yield from super().buscar_iter(*args, **kwargs)
+
+    monkeypatch.setattr(analise, "PNCPSearchService", CapturingSearch)
+    monkeypatch.setattr(analise, "DownloaderService", FakeDownloader)
+    monkeypatch.setattr(analise, "PDFParserService", FakeParser)
+    monkeypatch.setattr(analise, "ResultadoService", FakeResultado)
+    monkeypatch.setattr(analise, "EnrichmentService", FakeEnrichment)
+    monkeypatch.setattr(analise, "PDF_DIR", tmp_path / "pdfs")
+
+    analise.analisar(
+        None,
+        "2026-03-01",
+        "2026-06-01",
+        "SP",
+        10,
+        tmp_path / "analise.db",
+        termos=["firewall", "data center"],
+    )
+
+    assert CapturingSearch.termos == ["firewall", "data center"]
+
+
 def test_funil_remove_no_primeiro_balde_quando_ha_sobreposicao():
     auditoria = analise._montar_auditoria(
         adjudicatarios=[],

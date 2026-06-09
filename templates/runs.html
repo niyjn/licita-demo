@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Histórico | Análise PNCP{% endblock %}
+
+{% block content %}
+  <section class="runs-page">
+    <div class="page-header runs-header">
+      <div>
+        <span class="eyebrow">Histórico</span>
+        <h1>Análises salvas</h1>
+      </div>
+      <a class="btn btn-primary" href="{{ url_for('index') }}">Nova análise</a>
+    </div>
+
+    <div class="view-filters">
+      <a class="btn btn-secondary{% if not status %} selected{% endif %}" href="{{ url_for('listar_runs') }}">Todas</a>
+      {% for value, label in [('done', 'Concluídas'), ('error', 'Erros'), ('running', 'Em execução'), ('queued', 'Na fila')] %}
+        <a class="btn btn-secondary{% if status == value %} selected{% endif %}" href="{{ url_for('listar_runs', status=value) }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+
+    {% if runs %}
+      <section class="thread-rail runs-rail">
+        <div class="rail-header">
+          <div>
+            <strong>{{ total }} análise{% if total != 1 %}s{% endif %}</strong>
+            <span>Página {{ pagina }} de {{ total_paginas }}</span>
+          </div>
+        </div>
+        <div class="job-list">
+          {% for run in runs %}
+            <article class="job-item">
+              <a href="{{ url_for('ver_analise', run_id=run.id) }}">
+                <div class="job-row">
+                  <span class="status-dot"></span>
+                  <strong>{{ run.titulo }}</strong>
+                  <span class="pill {{ run.status_tone }}">{{ run.status_label }}</span>
+                </div>
+                <div class="job-meta">
+                  <span>{{ run.created_at.replace('T', ' ') }}</span>
+                  <span>{{ run.params.get('uf', '-') }}</span>
+                  <span class="tabular">{{ run.contratos_count }} contrato{% if run.contratos_count != 1 %}s{% endif %}</span>
+                </div>
+              </a>
+              {% if run.status in ['done', 'error'] %}
+                <form method="post" action="{{ url_for('excluir_analise', run_id=run.id) }}" class="run-delete-form">
+                  <button class="btn btn-secondary" type="submit">Excluir</button>
+                </form>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+        <div class="rail-pager pagination">
+          {% if pagina > 1 %}
+            <a class="btn btn-secondary" href="{{ url_for('listar_runs', page=pagina-1, status=status) }}">Anterior</a>
+          {% endif %}
+          <span class="tabular">{{ pagina }} / {{ total_paginas }}</span>
+          {% if pagina < total_paginas %}
+            <a class="btn btn-secondary" href="{{ url_for('listar_runs', page=pagina+1, status=status) }}">Próxima</a>
+          {% endif %}
+        </div>
+      </section>
+    {% else %}
+      <div class="blank-slate">
+        <span class="eyebrow">Sem análises</span>
+        <h2>Nenhuma análise ainda</h2>
+        <span>Inicie uma busca para criar o primeiro registro do histórico.</span>
+      </div>
+    {% endif %}
+  </section>
+{% endblock %}

@@ -23,13 +23,14 @@ DESCARTE_DIRETO_TERMOS = (
 )
 
 
-def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id=None, progress=None):
+def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id=None, progress=None, termos=None):
     if callable(run_id) and progress is None:
         progress = run_id
         run_id = None
 
-    if area not in AREAS:
+    if not termos and area not in AREAS:
         raise ValueError(f"Área desconhecida: {area}")
+    palavras_chave = list(termos) if termos else AREAS[area]
 
     db_path = Path(db_path)
     storage = Storage(db_path)
@@ -39,8 +40,9 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
     resultados = ResultadoService()
     enrichment = EnrichmentService()
 
-    _emit(progress, "busca", f"Buscando compras em {uf} para {area}.")
-    compras = _buscar_compras(search, area, data_inicial, data_final, uf, limite, progress)
+    rotulo_busca = ", ".join(palavras_chave) if termos else area
+    _emit(progress, "busca", f"Buscando compras em {uf} para {rotulo_busca}.")
+    compras = _buscar_compras(search, palavras_chave, data_inicial, data_final, uf, limite, progress)
 
     contratos_salvos = 0
     participantes_salvos = 0
@@ -115,7 +117,7 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
     return resumo
 
 
-def _buscar_compras(search, area, data_inicial, data_final, uf, limite, progress):
+def _buscar_compras(search, palavras_chave, data_inicial, data_final, uf, limite, progress):
     vistas = set()
     compras = []
     for compra in search.buscar_iter(
@@ -124,7 +126,7 @@ def _buscar_compras(search, area, data_inicial, data_final, uf, limite, progress
         limite_por_combinacao=limite,
         pausa=0,
         logger=lambda mensagem: _emit(progress, "busca", mensagem),
-        palavras_chave=AREAS[area],
+        palavras_chave=palavras_chave,
         ufs=uf,
     ):
         linha = _linha(compra)
