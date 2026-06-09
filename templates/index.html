@@ -111,7 +111,10 @@
           <input type="date" name="data_final" value="{{ periodo_padrao[1] }}">
         </label>
         <label class="field">
-          <span>Limite</span>
+          <span class="field-label-row">
+            Limite
+            <button class="icon-button compact" id="limit-help" type="button" aria-label="O que significa o limite">?</button>
+          </span>
           <input type="number" name="limite" value="10" min="1" max="100">
         </label>
         <button class="btn btn-primary" type="submit" style="width: 100%;">Analisar</button>
@@ -579,6 +582,22 @@
             <li>Contratos repetidos entre termos são deduplicados.</li>
             <li>A análise roda em segundo plano e fica salva no Histórico.</li>
             <li>Nomes de participantes dependem das respostas do PNCP e da BrasilAPI e podem ficar indisponíveis.</li>
+          </ul>
+        </div>`;
+      document.getElementById("metric-modal").style.display = "flex";
+    });
+
+    document.getElementById("limit-help").addEventListener("click", () => {
+      document.getElementById("modal-title").textContent = "O que significa o limite";
+      document.getElementById("modal-body").innerHTML = `
+        <div class="faq-content">
+          <p>O limite define quantas oportunidades o PNCP pode retornar para cada combinação de termo e perfil de busca.</p>
+          <ul>
+            <li>Cada termo é pesquisado em 3 perfis: edital encerrado, edital homologado e contrato vigente.</li>
+            <li>Exemplo: 2 termos com limite 10 podem gerar até 60 oportunidades antes da deduplicação.</li>
+            <li>O limite não controla itens do edital, quantidade de atas, PDFs ou participantes.</li>
+            <li>Valores maiores aumentam chamadas, downloads e tempo de processamento.</li>
+            <li>Para testes rápidos, use limite 1 ou 2.</li>
           </ul>
         </div>`;
       document.getElementById("metric-modal").style.display = "flex";
