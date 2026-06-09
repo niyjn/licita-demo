@@ -11,6 +11,8 @@ from pathlib import Path
 
 SCHEMA_VERSION = 3
 
+_INITIALIZED_DBS: set[str] = set()
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
     id TEXT PRIMARY KEY,
@@ -92,7 +94,10 @@ class Storage:
     def __init__(self, db_path):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.init_db()
+        key = str(self.db_path.resolve())
+        if key not in _INITIALIZED_DBS:
+            self.init_db()
+            _INITIALIZED_DBS.add(key)
 
     @contextmanager
     def connect(self):
