@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _INITIALIZED_DBS: set[str] = set()
 
@@ -24,7 +24,10 @@ CREATE TABLE IF NOT EXISTS runs (
     params_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     started_at TEXT,
-    finished_at TEXT
+    finished_at TEXT,
+    worker_id TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    heartbeat_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS contratos (
@@ -116,6 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_contratos_uf ON contratos(uf);
 CREATE INDEX IF NOT EXISTS idx_contratos_run ON contratos(run_id);
 CREATE INDEX IF NOT EXISTS idx_auditoria_run_disposition ON cnpjs_auditoria(run_id, disposition);
 CREATE INDEX IF NOT EXISTS idx_evidencias_run_cnpj ON cnpj_evidencias(run_id, cnpj);
+CREATE INDEX IF NOT EXISTS idx_runs_status_created ON runs(status, created_at);
 """
 
 
@@ -182,6 +186,16 @@ class Storage:
                 conn.execute("ALTER TABLE metricas_funil ADD COLUMN vencedores_inferidos INTEGER NOT NULL DEFAULT 0")
             except sqlite3.OperationalError:
                 pass
+        if current_version < 7:
+            for coluna in (
+                "worker_id TEXT",
+                "attempt_count INTEGER NOT NULL DEFAULT 0",
+                "heartbeat_at TEXT",
+            ):
+                try:
+                    conn.execute(f"ALTER TABLE runs ADD COLUMN {coluna}")
+                except sqlite3.OperationalError:
+                    pass
 
     def criar_run(self, run_id, params_json="{}"):
         now = _now()
@@ -242,15 +256,78 @@ class Storage:
         with self.connect() as conn:
             conn.execute(f"UPDATE runs SET {', '.join(updates)} WHERE id = ?", params)
 
+    def claim_next_run(self, worker_id):
+        """Reivindica, em uma única transação, a run queued mais antiga."""
+        now = _now()
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            run = conn.execute(
+                "SELECT * FROM runs WHERE status = 'queued' ORDER BY created_at ASC, id ASC LIMIT 1"
+            ).fetchone()
+            if not run:
+                return None
+            cursor = conn.execute(
+                """
+                UPDATE runs
+                SET status = 'running', progress = 0, message = 'Análise iniciada.',
+                    started_at = COALESCE(started_at, ?), heartbeat_at = ?, worker_id = ?,
+                    attempt_count = attempt_count + 1
+                WHERE id = ? AND status = 'queued'
+                """,
+                (now, now, worker_id, run["id"]),
+            )
+            if cursor.rowcount != 1:
+                return None
+            return dict(conn.execute("SELECT * FROM runs WHERE id = ?", (run["id"],)).fetchone())
+
+    def heartbeat_run(self, run_id, worker_id, progress=None, message=None):
+        updates = ["heartbeat_at = ?"]
+        params = [_now()]
+        if progress is not None:
+            updates.append("progress = ?")
+            params.append(float(progress))
+        if message is not None:
+            updates.append("message = ?")
+            params.append(str(message))
+        params.extend((run_id, worker_id))
+        with self.connect() as conn:
+            cursor = conn.execute(
+                f"UPDATE runs SET {', '.join(updates)} WHERE id = ? AND status = 'running' AND worker_id = ?",
+                params,
+            )
+            return cursor.rowcount == 1
+
+    def complete_claimed_run(self, run_id, worker_id, message="Análise concluída."):
+        now = _now()
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """UPDATE runs SET status = 'done', progress = 100, message = ?, error = '',
+                   heartbeat_at = ?, finished_at = ?
+                   WHERE id = ? AND status = 'running' AND worker_id = ?""",
+                (message, now, now, run_id, worker_id),
+            )
+            return cursor.rowcount == 1
+
+    def fail_claimed_run(self, run_id, worker_id, error, message="Análise falhou."):
+        now = _now()
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """UPDATE runs SET status = 'error', progress = 100, message = ?, error = ?,
+                   heartbeat_at = ?, finished_at = ?
+                   WHERE id = ? AND status = 'running' AND worker_id = ?""",
+                (message, str(error), now, now, run_id, worker_id),
+            )
+            return cursor.rowcount == 1
+
     def limpar_runs_travadas(self, timeout_segundos=3600):
         """Marca runs travadas (ex: erro silencioso) há mais de timeout_segundos como 'error'."""
         with self.connect() as conn:
             rows = conn.execute(
-                "SELECT id, started_at, created_at FROM runs WHERE status IN ('running', 'queued')"
+                "SELECT id, started_at, heartbeat_at, created_at FROM runs WHERE status = 'running'"
             ).fetchall()
             now = datetime.now()
             for row in rows:
-                ref_time_str = row["started_at"] or row["created_at"]
+                ref_time_str = row["heartbeat_at"] or row["started_at"] or row["created_at"]
                 if not ref_time_str:
                     continue
                 try:
