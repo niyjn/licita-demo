@@ -42,6 +42,12 @@ class AnalysisCommand:
         if not all(isinstance(params[key], str) and params[key] for key in ("data_inicial", "data_final", "uf")):
             raise ValueError("Parâmetros persistidos são inválidos.")
         return cls(
-            run_id=str(run["id"]), modo=modo, area=area, termos=tuple(termos),
-            data_inicial=params["data_inicial"], data_final=params["data_final"], uf=params["uf"], limite=params["limite"],
+            run_id=str(run["id"]),
+            modo=modo,
+            area=area,
+            termos=tuple(termos),
+            data_inicial=params["data_inicial"],
+            data_final=params["data_final"],
+            uf=params["uf"],
+            limite=params["limite"],
         )
