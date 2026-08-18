@@ -4,12 +4,10 @@ import sqlite3
 import unicodedata
 from math import ceil
 from pathlib import Path
-from threading import Thread
 from uuid import uuid4
 
 from flask import Flask, jsonify, make_response, redirect, render_template, request, url_for
 
-from analise import analisar
 from pncp_query.config import AREAS, DB_PATH, UFS, janela_padrao
 from pncp_query.services.storage import Storage
 
@@ -86,7 +84,7 @@ def create_app(config=None):
         static_url_path="/design-system",
         template_folder="templates",
     )
-    app.config.update(DB_PATH=DB_PATH, ANALYSIS_FUNC=analisar)
+    app.config.update(DB_PATH=DB_PATH)
     if config:
         app.config.update(config)
 
@@ -248,12 +246,6 @@ def create_app(config=None):
                 409,
             )
 
-        thread = Thread(
-            target=_executar_analise_background,
-            args=(run_id, payload, app.config["DB_PATH"], app.config["ANALYSIS_FUNC"]),
-            daemon=True,
-        )
-        thread.start()
         return jsonify({"run_id": run_id}), 202
 
     @app.get("/perfis")
@@ -608,59 +600,6 @@ def _titulo_run(params):
         return ", ".join(termos)
     area = params.get("area")
     return AREA_LABELS.get(area, area or "Análise sem parâmetros")
-
-
-def _executar_analise_background(run_id, payload, db_path, analysis_func):
-    storage = Storage(db_path)
-    status_final = "done"
-    mensagem_final = "Análise concluída."
-    erro_final = ""
-    
-    try:
-        storage.atualizar_run(run_id, status="running", progress=0, message="Análise iniciada.")
-
-        def progress(evento):
-            atual = evento.get("atual")
-            total = evento.get("total")
-            progresso = 0
-            if atual is not None and total:
-                progresso = min(99, int((atual / total) * 100))
-            storage.atualizar_run(run_id, status="running", progress=progresso, message=evento["mensagem"])
-
-        argumentos = dict(
-            run_id=run_id,
-            progress=progress,
-        )
-        if payload.get("modo") == "livre":
-            argumentos["termos"] = payload["termos"]
-        analysis_func(
-            payload["area"],
-            payload["data_inicial"],
-            payload["data_final"],
-            payload["uf"],
-            payload["limite"],
-            db_path,
-            **argumentos,
-        )
-    except Exception as exc:
-        status_final = "error"
-        mensagem_final = "Análise falhou."
-        erro_final = str(exc)
-    finally:
-        try:
-            # Limpa runs travadas de execuções anteriores (mais de 1 hora executando)
-            storage.limpar_runs_travadas(timeout_segundos=3600)
-            
-            storage.atualizar_run(
-                run_id, 
-                status=status_final, 
-                progress=100, 
-                message=mensagem_final, 
-                error=erro_final
-            )
-        except Exception as db_exc:
-            import sys
-            print(f"[CRITICAL] Falha ao gravar status final da run {run_id}: {db_exc}", file=sys.stderr)
 
 
 app = create_app()

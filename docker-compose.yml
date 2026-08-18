@@ -2,9 +2,19 @@ services:
   web:
     build: .
     image: licita-demo:latest
-    container_name: licita_demo_app
+    command: ["gunicorn", "-b", "0.0.0.0:8000", "--workers", "1", "--threads", "4", "app:app"]
     ports:
       - "8000:8000"
+    volumes:
+      - licita_data:/app/output
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    restart: unless-stopped
+
+  worker:
+    image: licita-demo:latest
+    command: ["python", "-m", "pncp_query.worker"]
     volumes:
       - licita_data:/app/output
     environment:

@@ -51,8 +51,8 @@ contexto explícito no PDF, o CNPJ permanece inconclusivo e não entra no result
 ## Arquitetura
 
 - **Flask + Jinja2** — frontend server-rendered, estilizado pelo CSS em `design-system/`.
-- **Execução assíncrona simples** — `POST /analises` cria uma run, dispara a análise numa thread e retorna `run_id`; o front faz polling em `GET /analises/<run_id>/status`.
-- **Uma análise ativa por vez** — o SQLite impede atomicamente uma segunda run em estado `queued/running`. O container usa um worker Gunicorn com quatro threads, adequado ao escopo demonstrativo.
+- **Web e worker separados** — `POST /analises` apenas persiste uma run `queued`; o worker (`python -m pncp_query.worker`) a reivindica e executa. O front faz polling em `GET /analises/<run_id>/status`.
+- **Uma análise ativa por vez** — o SQLite impede atomicamente uma segunda run em estado `queued/running`; o claim usa uma transação SQLite para que dois workers não processem a mesma run.
 - **Histórico e modelos** — runs ficam disponíveis em `/runs`; termos livres podem ser salvos como modelos reutilizáveis.
 - **SQLite** (WAL + `busy_timeout`) — sem servidor de banco; roda inteiro em um container.
 - **Serviços** — busca PNCP, resultado estruturado, downloader de atas (download atômico), parser PDF/OCR, validação de CNPJ e enriquecimento por BrasilAPI.
@@ -85,6 +85,21 @@ docker run --rm -p 8000:8000 licita-demo
 docker compose up --build
 # http://localhost:8000
 ```
+
+O Compose inicia os serviços `web` e `worker` a partir da mesma imagem e compartilha o volume
+`/app/output`, que contém o banco SQLite e os PDFs. Para depuração, também é possível executar:
+
+```bash
+# processa no máximo uma run queued e encerra
+python -m pncp_query.worker --once
+
+# worker contínuo
+python -m pncp_query.worker
+```
+
+SQLite continua sendo uma solução single-host nesta etapa. Não escale workers horizontalmente
+sem revisar a operação do banco. Uma run interrompida é marcada como erro por timeout; ela não é
+retentada nem retomada automaticamente.
 
 ## Testes e lint
 
