@@ -335,7 +335,7 @@ class Storage:
                     if (now - ref_time).total_seconds() > timeout_segundos:
                         conn.execute(
                             "UPDATE runs SET status = 'error', message = 'Análise excedeu o tempo limite.', "
-                            "error = 'Timeout de processamento.', finished_at = ? WHERE id = ?",
+                            "error = 'Timeout de processamento.', finished_at = ? WHERE id = ? AND status = 'running'",
                             (now.isoformat(timespec="seconds"), row["id"])
                         )
                 except Exception:
