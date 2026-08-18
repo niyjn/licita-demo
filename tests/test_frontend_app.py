@@ -1,5 +1,7 @@
 from app import _titulo_limpo, create_app
+from pncp_query.application.analysis_executor import AnalysisExecutor
 from pncp_query.services.storage import Storage
+from pncp_query.worker import run_once
 
 
 def wait_status(client, run_id, expected):
@@ -34,32 +36,39 @@ def test_healthz_retorna_ok():
     assert response.json == {"status": "ok"}
 
 
-def test_post_analises_cria_run_e_status_done_no_sqlite(tmp_path):
+def test_post_analises_cria_run_queued_e_worker_a_conclui_no_sqlite(tmp_path):
     def fake_analysis(area, data_inicial, data_final, uf, limite, db_path, run_id=None, progress=None):
         progress({"mensagem": "metade", "atual": 1, "total": 2})
 
-    app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db", "ANALYSIS_FUNC": fake_analysis})
+    db_path = tmp_path / "analise.db"
+    app = create_app({"TESTING": True, "DB_PATH": db_path})
     client = app.test_client()
 
     response = client.post("/analises", json={"area": "TI", "uf": "SP", "limite": 1})
 
     assert response.status_code == 202
     run_id = response.json["run_id"]
+    assert client.get(f"/analises/{run_id}/status").json["status"] == "queued"
+    storage = Storage(db_path)
+    run_once(storage, AnalysisExecutor(storage, fake_analysis), "test-worker")
     status = wait_status(client, run_id, "done")
     assert status["progress"] == 100
     assert status["error"] == ""
 
 
-def test_post_analises_grava_error_quando_thread_falha(tmp_path):
+def test_post_analises_grava_error_quando_worker_falha(tmp_path):
     def fake_analysis(area, data_inicial, data_final, uf, limite, db_path, run_id=None, progress=None):
         raise RuntimeError("falha controlada")
 
-    app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db", "ANALYSIS_FUNC": fake_analysis})
+    db_path = tmp_path / "analise.db"
+    app = create_app({"TESTING": True, "DB_PATH": db_path})
     client = app.test_client()
 
     response = client.post("/analises", json={"area": "TI", "uf": "SP", "limite": 1})
 
     assert response.status_code == 202
+    storage = Storage(db_path)
+    run_once(storage, AnalysisExecutor(storage, fake_analysis), "test-worker")
     status = wait_status(client, response.json["run_id"], "error")
     assert status["progress"] == 100
     assert status["error"] == "falha controlada"
@@ -81,7 +90,8 @@ def test_post_analises_livre_normaliza_e_repassa_termos(tmp_path):
     ):
         recebido.update(area=area, termos=termos)
 
-    app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db", "ANALYSIS_FUNC": fake_analysis})
+    db_path = tmp_path / "analise.db"
+    app = create_app({"TESTING": True, "DB_PATH": db_path})
     client = app.test_client()
 
     response = client.post(
@@ -90,6 +100,8 @@ def test_post_analises_livre_normaliza_e_repassa_termos(tmp_path):
     )
 
     assert response.status_code == 202
+    storage = Storage(db_path)
+    run_once(storage, AnalysisExecutor(storage, fake_analysis), "test-worker")
     wait_status(client, response.json["run_id"], "done")
     assert recebido == {"area": None, "termos": ["firewall", "data center"]}
 
