@@ -1,9 +1,15 @@
 import json
+import os
+import subprocess
+import sys
 import threading
 
+import pytest
+
+from pncp_query.application.analysis_command import AnalysisCommand
 from pncp_query.application.analysis_executor import AnalysisExecutor
 from pncp_query.services.storage import Storage
-from pncp_query.worker import run_once
+from pncp_query.worker import main, run_once
 
 
 def params(**overrides):
@@ -43,15 +49,15 @@ def test_executor_sucesso_progresso_e_erro(tmp_path):
     def successful(*args, **kwargs):
         kwargs["progress"]({"mensagem": "metade", "atual": 1, "total": 2})
 
-    from pncp_query.application.analysis_command import AnalysisCommand
-
     assert AnalysisExecutor(storage, successful).execute(AnalysisCommand.from_run(run), "worker")
     completed = storage.obter_run("success")
     assert (completed["status"], completed["progress"], completed["message"]) == ("done", 100.0, "Análise concluída.")
 
     storage.criar_run("error", params())
     run = storage.claim_next_run("worker")
-    failing = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
+    def failing(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
     assert not AnalysisExecutor(storage, failing).execute(AnalysisCommand.from_run(run), "worker")
     assert storage.obter_run("error")["error"] == "boom"
 
@@ -71,6 +77,53 @@ def test_worker_once_processa_run_e_payload_invalido_vira_erro(tmp_path):
     invalid = storage.obter_run("invalid")
     assert invalid["status"] == "error"
     assert "inválidos" in invalid["error"]
+
+
+def test_worker_main_once_processa_uma_run(tmp_path):
+    storage = Storage(tmp_path / "queue.db")
+    storage.criar_run("queued", params())
+    called = []
+    executor = AnalysisExecutor(storage, lambda *args, **kwargs: called.append(kwargs["run_id"]))
+
+    assert main(["--once"], storage=storage, executor=executor) == 0
+    assert called == ["queued"]
+    assert storage.obter_run("queued")["status"] == "done"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"area": "DESCONHECIDA"},
+        {"uf": "XX"},
+        {"limite": 101},
+        {"data_inicial": "2026-02-01", "data_final": "2026-01-01"},
+    ],
+)
+def test_analysis_command_rejeita_parametros_fora_das_regras(overrides):
+    run = {"id": "invalid", "params_json": params(**overrides)}
+
+    with pytest.raises(ValueError):
+        AnalysisCommand.from_run(run)
+
+
+def test_python_module_worker_once_reivindica_fila_persistida(tmp_path):
+    db_path = tmp_path / "queue.db"
+    Storage(db_path).criar_run("invalid", "not-json")
+    env = os.environ.copy()
+    env["DB_PATH"] = str(db_path)
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pncp_query.worker", "--once"],
+        check=False,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    run = Storage(db_path).obter_run("invalid")
+    assert run["status"] == "error"
+    assert run["attempt_count"] == 1
 
 
 def test_stale_running_vira_erro_sem_voltar_para_fila(tmp_path):

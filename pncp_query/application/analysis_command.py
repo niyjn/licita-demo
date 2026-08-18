@@ -2,6 +2,9 @@
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
+
+from pncp_query.config import AREAS, UFS
 
 
 @dataclass(frozen=True)
@@ -28,19 +31,32 @@ class AnalysisCommand:
             raise ValueError("Modo de busca persistido é inválido.")
         area = params.get("area")
         termos = params.get("termos", [])
-        if not isinstance(termos, list) or not all(isinstance(term, str) and term.strip() for term in termos):
+        if not isinstance(termos, list) or not all(
+            isinstance(term, str) and len(term.strip()) >= 2 for term in termos
+        ):
             raise ValueError("Termos persistidos são inválidos.")
-        if modo == "livre" and (area is not None or not termos):
+        if modo == "livre" and (area is not None or not termos or len(termos) > 12):
             raise ValueError("Busca livre persistida requer termos e não aceita área.")
-        if modo == "fixo" and (not isinstance(area, str) or not area or termos):
+        if modo == "fixo" and (area not in AREAS or termos):
             raise ValueError("Busca por área persistida requer uma área e não aceita termos.")
         required = ("data_inicial", "data_final", "uf", "limite")
         if any(key not in params for key in required):
             raise ValueError("Parâmetros persistidos estão incompletos.")
-        if not isinstance(params["limite"], int):
+        if not isinstance(params["limite"], int) or isinstance(params["limite"], bool):
+            raise ValueError("Limite persistido é inválido.")
+        if not 1 <= params["limite"] <= 100:
             raise ValueError("Limite persistido é inválido.")
         if not all(isinstance(params[key], str) and params[key] for key in ("data_inicial", "data_final", "uf")):
             raise ValueError("Parâmetros persistidos são inválidos.")
+        if params["uf"] not in UFS:
+            raise ValueError("UF persistida é inválida.")
+        try:
+            data_inicial = datetime.strptime(params["data_inicial"], "%Y-%m-%d")
+            data_final = datetime.strptime(params["data_final"], "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError("Datas persistidas são inválidas.") from exc
+        if data_inicial > data_final:
+            raise ValueError("Período persistido é inválido.")
         return cls(
             run_id=str(run["id"]),
             modo=modo,

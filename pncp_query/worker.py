@@ -50,14 +50,15 @@ def run_forever(storage, executor, worker_name, poll_interval=2.0):
         signal.signal(signal.SIGTERM, previous_term)
 
 
-def main(argv=None):
+def main(argv=None, storage=None, executor=None):
     parser = argparse.ArgumentParser(description="Processa análises pendentes.")
     parser.add_argument("--once", action="store_true", help="Processa no máximo uma análise e encerra.")
     parser.add_argument("--poll-interval", type=float, default=2.0)
     args = parser.parse_args(argv)
-    storage = Storage(DB_PATH)
-    executor = AnalysisExecutor(storage)
+    storage = storage if storage is not None else Storage(DB_PATH)
+    executor = executor if executor is not None else AnalysisExecutor(storage)
     if args.once:
+        storage.limpar_runs_travadas()
         run_once(storage, executor, worker_id())
     else:
         run_forever(storage, executor, worker_id(), args.poll_interval)
