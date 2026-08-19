@@ -98,3 +98,21 @@ def test_sinal_de_responsavel_mais_proposta_permanece_participante(mock_extract)
     resultado = service.extrair_resultado(Path("dummy.pdf"))
 
     assert resultado.evidencias[0].categoria == "incidental"
+
+
+@patch.object(PDFParserService, "_extrair_texto_nativo")
+def test_divisor_de_aguas_sem_cortar_palavras_e_sem_contaminar(mock_extract):
+    service = PDFParserService()
+    mock_extract.return_value = (
+        "Empresa vencedora: 11.222.333/0001-81\n"
+        "Licitante participante: 22.333.444/0001-02",
+        1,
+    )
+
+    resultado = service.extrair_resultado(Path("dummy.pdf"))
+
+    evidencias = {item.cnpj: item for item in resultado.evidencias}
+    
+    # Ambos devem ser classificados corretamente sem contaminação cruzada
+    assert evidencias["11222333000181"].categoria == "vencedor"
+    assert evidencias["22333444000102"].categoria == "participante"
