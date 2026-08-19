@@ -11,6 +11,8 @@ from pncp_query.config import (
     PALAVRAS_ARQUIVO_EXCLUIR,
     PALAVRAS_ARQUIVO_FORTE,
     PDF_MAX_BYTES,
+    S3_BUCKET_NAME,
+    AWS_REGION,
 )
 from pncp_query.models import ArquivoPNCP, LoteArquivosPNCP
 from pncp_query.services.common import nome_seguro, somente_digitos
@@ -40,6 +42,10 @@ class DownloaderService:
         self.http = HttpClient(self.session)
         self._cache_contratos = {}
         self._cache_arquivos = {}
+        self.s3_client = None
+        if S3_BUCKET_NAME:
+            import boto3
+            self.s3_client = boto3.client("s3", region_name=AWS_REGION)
 
     def listar_arquivos_relevantes(self, linha_licitacao, pdf_dir: Path, chaves_compra=None):
         return self.listar_arquivos_candidatos(
@@ -129,6 +135,17 @@ class DownloaderService:
                 )
             if not conteudo.lstrip().startswith(b"%PDF"):
                 raise DocumentoInvalidoError(f"Documento sem assinatura PDF: {arquivo.titulo}")
+            
+            # Se S3 client estiver ativo, faz upload para o S3
+            if self.s3_client:
+                s3_key = arquivo.destino.name
+                self.s3_client.put_object(
+                    Bucket=S3_BUCKET_NAME,
+                    Key=s3_key,
+                    Body=conteudo,
+                    ContentType="application/pdf"
+                )
+            
             with temp_path.open("wb") as destino:
                 destino.write(conteudo)
             temp_path.replace(arquivo.destino)
