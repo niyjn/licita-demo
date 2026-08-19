@@ -767,7 +767,7 @@
         }
 
         if (status.status === "running") {
-          activeDurationSeconds = status.duration_seconds || 0;
+          activeDurationSeconds = Math.max(activeDurationSeconds, status.duration_seconds || 0);
           document.getElementById("progress-time-elapsed").textContent = `Tempo ativo: ${formatDuration(activeDurationSeconds)}`;
           startTimer();
         } else {
