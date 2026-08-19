@@ -102,22 +102,40 @@ class PDFParserService:
         evidencias = []
         paginas = texto.split("\f")
         for numero_pagina, pagina in enumerate(paginas, start=1):
-            for match in CNPJ_RE.finditer(pagina):
+            matches = list(CNPJ_RE.finditer(pagina))
+            for i, match in enumerate(matches):
                 cnpj = somente_digitos(match.group(0))
-                inicio = pagina.rfind("\n", 0, match.start()) + 1
-                fim = pagina.find("\n", match.end())
-                if fim < 0:
-                    fim = len(pagina)
-                trecho = " ".join(pagina[inicio:fim].split())
+                pos_inicio = match.start()
+                pos_fim = match.end()
+                
+                # Definir limites padrão da janela (150 caracteres para cada lado)
+                limite_esquerda = max(0, pos_inicio - 150)
+                limite_direita = min(len(pagina), pos_fim + 150)
+                
+                # Ajustar limite esquerdo com base no vizinho anterior para evitar contaminação
+                if i > 0:
+                    vizinho_anterior_fim = matches[i - 1].end()
+                    metade = vizinho_anterior_fim + (pos_inicio - vizinho_anterior_fim) // 2
+                    # Retrocede para não cortar uma palavra no meio
+                    while metade > vizinho_anterior_fim and pagina[metade] not in (" ", "\n", "\t"):
+                        metade -= 1
+                    limite_esquerda = max(limite_esquerda, metade)
+                
+                # Ajustar limite direito com base no vizinho seguinte para evitar contaminação
+                if i < len(matches) - 1:
+                    vizinho_seguinte_inicio = matches[i + 1].start()
+                    metade = pos_fim + (vizinho_seguinte_inicio - pos_fim) // 2
+                    # Avança para não cortar uma palavra no meio
+                    while metade < vizinho_seguinte_inicio and pagina[metade] not in (" ", "\n", "\t"):
+                        metade += 1
+                    limite_direita = min(limite_direita, metade)
+                
+                # Extrai e normaliza o trecho dentro da janela dinâmica
+                trecho = " ".join(pagina[limite_esquerda:limite_direita].split())
+                
+                # Classifica o contexto baseado na janela
                 categoria, sinal = self._classificar_contexto(trecho)
-                if categoria == "incidental" and inicio > 0:
-                    fim_anterior = inicio - 1
-                    inicio_anterior = pagina.rfind("\n", 0, fim_anterior) + 1
-                    linha_anterior = " ".join(pagina[inicio_anterior:fim_anterior].split())
-                    categoria_anterior, sinal_anterior = self._classificar_contexto(linha_anterior)
-                    if categoria_anterior != "incidental" and not CNPJ_RE.search(linha_anterior):
-                        trecho = f"{linha_anterior} {trecho}".strip()
-                        categoria, sinal = categoria_anterior, sinal_anterior
+                
                 evidencias.append(
                     EvidenciaCNPJ(
                         cnpj=cnpj,
