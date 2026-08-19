@@ -154,6 +154,16 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
         contratos_salvos += 1
         participantes_salvos += len(auditoria["participantes"])
 
+        # Limpeza efêmera do disco local em produção (quando S3 estiver ativo)
+        from pncp_query.config import S3_BUCKET_NAME
+        if S3_BUCKET_NAME:
+            for arquivo in (lote.prioritarios + lote.fallback):
+                if hasattr(arquivo, "destino") and isinstance(arquivo.destino, Path):
+                    try:
+                        arquivo.destino.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
     resumo = {"contratos": contratos_salvos, "participantes": participantes_salvos}
     if run_id:
         resumo.update(storage.somar_metricas_run(run_id))
