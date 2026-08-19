@@ -59,6 +59,10 @@ except Exception:
 DB_PATH = _resolved_db_path
 PDF_DIR = _resolved_pdf_dir
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+
 HTTP_MAX_RETRIES = _env_int("HTTP_MAX_RETRIES", 5)
 HTTP_BACKOFF_BASE_SECONDS = _env_float("HTTP_BACKOFF_BASE_SECONDS", 2.0)
 HTTP_BACKOFF_MAX_SECONDS = _env_float("HTTP_BACKOFF_MAX_SECONDS", 120.0)
