@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _INITIALIZED_DBS: set[str] = set()
 
@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS runs (
     finished_at TEXT,
     worker_id TEXT,
     attempt_count INTEGER NOT NULL DEFAULT 0,
-    heartbeat_at TEXT
+    heartbeat_at TEXT,
+    duration_seconds INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS contratos (
@@ -338,6 +339,11 @@ class Storage:
                     conn.execute(f"ALTER TABLE runs ADD COLUMN {coluna}")
                 except sqlite3.OperationalError:
                     pass
+        if current_version < 8:
+            try:
+                conn.execute("ALTER TABLE runs ADD COLUMN duration_seconds INTEGER NOT NULL DEFAULT 0")
+            except (sqlite3.OperationalError, Exception):
+                pass
 
     def criar_run(self, run_id, params_json="{}"):
         now = _now()
@@ -458,7 +464,7 @@ class Storage:
                     return None
                 return dict(conn.execute("SELECT * FROM runs WHERE id = ?", (run["id"],)).fetchone())
 
-    def heartbeat_run(self, run_id, worker_id, progress=None, message=None):
+    def heartbeat_run(self, run_id, worker_id, progress=None, message=None, duration_seconds=None):
         updates = ["heartbeat_at = ?"]
         params = [_now()]
         if progress is not None:
@@ -467,6 +473,9 @@ class Storage:
         if message is not None:
             updates.append("message = ?")
             params.append(str(message))
+        if duration_seconds is not None:
+            updates.append("duration_seconds = ?")
+            params.append(int(duration_seconds))
         params.extend((run_id, worker_id))
         with self.connect() as conn:
             cursor = conn.execute(
@@ -475,25 +484,33 @@ class Storage:
             )
             return cursor.rowcount == 1
 
-    def complete_claimed_run(self, run_id, worker_id, message="Análise concluída."):
+    def complete_claimed_run(self, run_id, worker_id, message="Análise concluída.", duration_seconds=None):
         now = _now()
+        updates = ["status = 'done'", "progress = 100", "message = ?", "error = ''", "heartbeat_at = ?", "finished_at = ?"]
+        params = [message, now, now]
+        if duration_seconds is not None:
+            updates.append("duration_seconds = ?")
+            params.append(int(duration_seconds))
+        params.extend((run_id, worker_id))
         with self.connect() as conn:
             cursor = conn.execute(
-                """UPDATE runs SET status = 'done', progress = 100, message = ?, error = '',
-                   heartbeat_at = ?, finished_at = ?
-                   WHERE id = ? AND status = 'running' AND worker_id = ?""",
-                (message, now, now, run_id, worker_id),
+                f"UPDATE runs SET {', '.join(updates)} WHERE id = ? AND status = 'running' AND worker_id = ?",
+                params,
             )
             return cursor.rowcount == 1
 
-    def fail_claimed_run(self, run_id, worker_id, error, message="Análise falhou."):
+    def fail_claimed_run(self, run_id, worker_id, error, message="Análise falhou.", duration_seconds=None):
         now = _now()
+        updates = ["status = 'error'", "progress = 100", "message = ?", "error = ?", "heartbeat_at = ?", "finished_at = ?"]
+        params = [message, str(error), now, now]
+        if duration_seconds is not None:
+            updates.append("duration_seconds = ?")
+            params.append(int(duration_seconds))
+        params.extend((run_id, worker_id))
         with self.connect() as conn:
             cursor = conn.execute(
-                """UPDATE runs SET status = 'error', progress = 100, message = ?, error = ?,
-                   heartbeat_at = ?, finished_at = ?
-                   WHERE id = ? AND status = 'running' AND worker_id = ?""",
-                (message, str(error), now, now, run_id, worker_id),
+                f"UPDATE runs SET {', '.join(updates)} WHERE id = ? AND status = 'running' AND worker_id = ?",
+                params,
             )
             return cursor.rowcount == 1
 

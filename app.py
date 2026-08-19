@@ -290,6 +290,8 @@ def create_app(config=None):
                 "progress": run["progress"],
                 "message": run["message"],
                 "error": run["error"],
+                "started_at": run["started_at"],
+                "duration_seconds": run.get("duration_seconds", 0),
             }
         )
 

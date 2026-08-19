@@ -125,6 +125,10 @@
       <div id="progress-container" style="display: none; margin-top: 10px; background: var(--surface-strong); height: 10px; border: 1px solid var(--border); border-radius: 0px; overflow: hidden; width: 100%;">
         <div id="progress-bar" style="background: var(--primary-strong); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
       </div>
+      <div id="progress-time-info" style="display: none; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 6px; font-family: monospace;">
+        <span id="progress-time-start">Início: --:--:--</span>
+        <span id="progress-time-elapsed">Tempo ativo: 00:00</span>
+      </div>
     </aside>
 
     <section class="analysis-content">
@@ -161,7 +165,7 @@
               <div><strong>Período:</strong> <code>{{ run_params.data_inicial }}</code> a <code>{{ run_params.data_final }}</code></div>
             </div>
             <div style="border-top: 1px solid var(--border-soft); padding-top: 8px; margin-top: 8px; font-size: 11px;" class="muted">
-              Executado em: {{ run.created_at.replace('T', ' ') }} | ID da Run: <code>{{ run.id }}</code>
+              Executado em: <span class="local-time" data-utc="{{ run.created_at }}">{{ run.created_at.replace('T', ' ') }}</span> | ID da Run: <code>{{ run.id }}</code>
             </div>
           </div>
         {% endif %}
@@ -203,64 +207,64 @@
         {% endif %}
 
         <div class="metrics-grid">
-          <div class="metric">
+          <div class="metric" data-tooltip="Total de atas e relatórios oficiais lidos e processados sem falhas pelo sistema.">
             <span>Atas lidas com sucesso</span>
             <strong>{{ resumo.atas_lidas|default(0) }}</strong>
           </div>
-          <div class="metric">
+          <div class="metric" data-tooltip="Arquivos que falharam ao abrir ou processar (PDFs corrompidos, protegidos ou com digitalização ilegível).">
             <span>Falhas de leitura / parser</span>
             <strong>{{ resumo.atas_falhas|default(0) }}</strong>
           </div>
-          <div class="metric">
-            <span>CNPJs únicos das atas</span>
+          <div class="metric" data-tooltip="Quantidade de CNPJs únicos identificados nos textos das atas antes de passar pela limpeza de dados.">
+            <span>CNPJs detectados em atas</span>
             <strong>{{ resumo.cnpjs_ata_unicos|default(0) }}</strong>
           </div>
-          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_invalido') if run else '#' }}">
-            <span>Dígito inválido</span>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_invalido') if run else '#' }}" data-tooltip="CNPJs que apresentaram erro matemático no dígito verificador e foram descartados.">
+            <span>Dígito CNPJ inválido</span>
             <strong>{{ resumo.removido_invalido|default(0) }}</strong>
           </a>
-          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_orgao') if run else '#' }}">
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_orgao') if run else '#' }}" data-tooltip="CNPJ do próprio órgão comprador que fez a licitação, descartado para evitar falsos participantes.">
             <span>Órgão comprador</span>
             <strong>{{ resumo.removido_orgao|default(0) }}</strong>
           </a>
-          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_vencedor') if run else '#' }}">
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='removido_vencedor') if run else '#' }}" data-tooltip="Empresa que venceu a licitação e foi excluída da lista de concorrentes perdedores.">
             <span>Coincide com vencedor</span>
             <strong>{{ resumo.removido_vencedor|default(0) }}</strong>
           </a>
-          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='candidato_inconclusivo') if run else '#' }}">
-            <span>Candidatos inconclusivos</span>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='candidato_inconclusivo') if run else '#' }}" data-tooltip="Empresas citadas no PDF cujo contexto não permitiu confirmar se eram de fato concorrentes.">
+            <span>Candidatos sem contexto</span>
             <strong>{{ resumo.candidatos_inconclusivos|default(0) }}</strong>
           </a>
-          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}">
-            <span>Perdedores finais (atas)</span>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='perdedor_final') if run else '#' }}" data-tooltip="Empresas cuja participação e derrota foram confirmadas explicitamente no texto da ata.">
+            <span>Empresas perdedoras</span>
             <strong>{{ resumo.perdedores_final|default(resumo.perdedores|default(0)) }}</strong>
           </a>
-          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='vencedor') if run else '#' }}">
-            <span>Vencedores estruturados</span>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='vencedor') if run else '#' }}" data-tooltip="Empresa vencedora informada oficialmente na base estruturada do PNCP (sem depender de ata).">
+            <span>Vencedores oficiais</span>
             <strong>{{ resumo.vencedores|default(0) }}</strong>
           </a>
-          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='vencedor_inferido') if run else '#' }}">
-            <span>Vencedores inferidos</span>
+          <a class="metric" href="{{ url_for('listar_cnpjs', run_id=run.id, disposition='vencedor_inferido') if run else '#' }}" data-tooltip="Empresa vencedora identificada de forma interpretativa a partir das atas (quando ausente na base do PNCP).">
+            <span>Vencedores inferidos (atas)</span>
             <strong>{{ resumo.vencedores_inferidos|default(0) }}</strong>
           </a>
-          <div class="metric">
+          <div class="metric" data-tooltip="Total de empresas identificadas e qualificadas (Soma dos vencedores e perdedores confirmados).">
             <span>Resultado final</span>
             <strong>{{ resumo.resultado_final|default(0) }}</strong>
           </div>
-          <div class="metric">
-            <span>Documentos prioritários</span>
+          <div class="metric" data-tooltip="Documentos prioritários e oficiais de julgamento de propostas e habilitação.">
+            <span>Atas prioritárias</span>
             <strong>{{ resumo.documentos_prioritarios_lidos|default(0) }}</strong>
           </div>
-          <div class="metric">
-            <span>Documentos fallback</span>
+          <div class="metric" data-tooltip="Documentos de contingência lidos quando as atas principais não continham dados legíveis.">
+            <span>Atas de fallback</span>
             <strong>{{ resumo.documentos_fallback_lidos|default(0) }}</strong>
           </div>
-          <div class="metric">
-            <span>Documentos ignorados</span>
+          <div class="metric" data-tooltip="Arquivos ignorados automaticamente por não serem PDFs ou por possuírem termos como minutas e orçamentos.">
+            <span>Arquivos ignorados</span>
             <strong>{{ resumo.documentos_ignorados|default(0) }}</strong>
           </div>
-          <div class="metric">
-            <span>Documentos duplicados</span>
+          <div class="metric" data-tooltip="Arquivos descartados por possuírem conteúdo idêntico a outros já lidos na mesma licitação.">
+            <span>Arquivos repetidos</span>
             <strong>{{ resumo.documentos_duplicados|default(0) }}</strong>
           </div>
         </div>
@@ -688,6 +692,15 @@
       document.getElementById("metric-modal").style.display = "flex";
     });
 
+    let activeDurationSeconds = 0;
+    let timerInterval = null;
+
+    function formatDuration(sec) {
+      const minutes = Math.floor(sec / 60);
+      const seconds = sec % 60;
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       
@@ -700,6 +713,13 @@
       // Reset & show progress bar
       progressContainer.style.display = "block";
       progressBar.style.width = "0%";
+      
+      document.getElementById("progress-time-info").style.display = "flex";
+      document.getElementById("progress-time-start").textContent = "Início: --:--:--";
+      document.getElementById("progress-time-elapsed").textContent = "Tempo ativo: 00:00";
+      
+      if (timerInterval) clearInterval(timerInterval);
+      activeDurationSeconds = 0;
 
       const response = await fetch("/analises", { method: "POST", body: formData });
       const payload = await response.json();
@@ -708,10 +728,26 @@
         statusEl.textContent = payload.message || payload.error || "Erro desconhecido.";
         setFormDisabled(false);
         progressContainer.style.display = "none";
+        document.getElementById("progress-time-info").style.display = "none";
         return;
       }
 
       const runId = payload.run_id;
+
+      const startTimer = () => {
+        if (timerInterval) return;
+        timerInterval = setInterval(() => {
+          activeDurationSeconds++;
+          document.getElementById("progress-time-elapsed").textContent = `Tempo ativo: ${formatDuration(activeDurationSeconds)}`;
+        }, 1000);
+      };
+
+      const stopTimer = () => {
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+      };
 
       const poll = async () => {
         const statusResponse = await fetch(`/analises/${runId}/status`);
@@ -722,12 +758,29 @@
         if (status.progress !== undefined) {
           progressBar.style.width = `${status.progress}%`;
         }
+
+        if (status.started_at) {
+          const startDate = new Date(status.started_at);
+          if (!isNaN(startDate)) {
+            document.getElementById("progress-time-start").textContent = `Início: ${startDate.toLocaleTimeString('pt-BR')}`;
+          }
+        }
+
+        if (status.status === "running") {
+          activeDurationSeconds = status.duration_seconds || 0;
+          document.getElementById("progress-time-elapsed").textContent = `Tempo ativo: ${formatDuration(activeDurationSeconds)}`;
+          startTimer();
+        } else {
+          stopTimer();
+          if (status.duration_seconds !== undefined) {
+            document.getElementById("progress-time-elapsed").textContent = `Tempo ativo: ${formatDuration(status.duration_seconds)}`;
+          }
+        }
         
         if (status.status === "done") {
           window.location.href = `/analises/${runId}?uf=${form.uf.value}`;
         } else if (status.status === "error") {
           statusEl.textContent = status.error || status.message;
-          // Re-enable form
           setFormDisabled(false);
         } else {
           setTimeout(poll, 1200);

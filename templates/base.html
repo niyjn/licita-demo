@@ -60,7 +60,19 @@
         const newTheme = activeTheme === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', newTheme);
         localStorage.setItem('theme', newTheme);
-        updateToggleUI(newTheme);
+      });
+
+      // Converte todos os elementos com a classe local-time do UTC para o horário local do navegador
+      document.addEventListener("DOMContentLoaded", () => {
+        document.querySelectorAll(".local-time").forEach(el => {
+          const utcStr = el.getAttribute("data-utc");
+          if (utcStr) {
+            const date = new Date(utcStr);
+            if (!isNaN(date)) {
+              el.textContent = date.toLocaleString('pt-BR');
+            }
+          }
+        });
       });
     </script>
   </body>
