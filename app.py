@@ -319,9 +319,31 @@ def create_app(config=None):
         resposta.headers["Content-Type"] = "application/json"
         return resposta
 
+    @app.get("/favicon.ico")
+    def favicon():
+        return app.send_static_file("favicon.svg")
+
     @app.get("/healthz")
     def healthz():
         return jsonify({"status": "ok"})
+
+    @app.errorhandler(404)
+    def page_not_found(e):
+        return render_template(
+            "erro.html",
+            codigo=404,
+            titulo="Página não encontrada",
+            mensagem="O link que você seguiu pode estar quebrado ou a página foi removida.",
+        ), 404
+
+    @app.errorhandler(500)
+    def internal_server_error(e):
+        return render_template(
+            "erro.html",
+            codigo=500,
+            titulo="Erro interno do processador",
+            mensagem="Ocorreu uma falha inesperada nos nossos servidores. Nossa equipe de análise foi notificada.",
+        ), 500
 
     return app
 
