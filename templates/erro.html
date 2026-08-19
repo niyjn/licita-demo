@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Erro {{ codigo }} - Análise PNCP{% endblock %}
+{% block content %}
+<div class="card" style="max-width: 600px; margin: 80px auto; text-align: center; padding: 40px; border: 3px solid var(--border); box-shadow: 8px 8px 0px var(--border); background: var(--surface);">
+  <h1 style="font-family: 'Sora', sans-serif; font-size: 80px; font-weight: 800; margin-bottom: 16px; color: var(--primary-strong);">{{ codigo }}</h1>
+  <h2 style="font-family: 'Sora', sans-serif; font-size: 24px; font-weight: 700; margin-bottom: 16px;">{{ titulo }}</h2>
+  <p style="color: var(--text); margin-bottom: 32px; line-height: 1.6; opacity: 0.85;">{{ mensagem }}</p>
+  <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+    <a href="{{ url_for('index') }}" class="btn btn-primary" style="border: 2px solid var(--border); font-weight: 600;">Voltar ao Início</a>
+    <a href="{{ url_for('listar_runs') }}" class="btn btn-secondary" style="border: 2px solid var(--border); font-weight: 600;">Ver Histórico</a>
+  </div>
+</div>
+{% endblock %}

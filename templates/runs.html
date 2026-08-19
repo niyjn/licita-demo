@@ -37,7 +37,7 @@
                   <span class="pill {{ run.status_tone }}">{{ run.status_label }}</span>
                 </div>
                 <div class="job-meta">
-                  <span>{{ run.created_at.replace('T', ' ') }}</span>
+                  <span class="local-time" data-utc="{{ run.created_at }}">{{ run.created_at.replace('T', ' ') }}</span>
                   <span>{{ run.params.get('uf', '-') }}</span>
                   <span class="tabular">{{ run.contratos_count }} contrato{% if run.contratos_count != 1 %}s{% endif %}</span>
                 </div>

@@ -1863,3 +1863,37 @@ tbody tr:hover td {
   color: var(--muted);
   line-height: 1.35;
 }
+
+/* ============================================================
+   19. BRUTALIST TOOLTIPS
+   ============================================================ */
+[data-tooltip] {
+  position: relative;
+  cursor: help;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  color: var(--text);
+  border: 2px solid var(--border);
+  padding: 8px 12px;
+  font-size: 11px;
+  white-space: normal;
+  width: 220px;
+  z-index: 1000;
+  display: none;
+  box-shadow: 4px 4px 0px var(--border);
+  text-align: left;
+  font-weight: normal;
+  line-height: 1.45;
+  border-radius: 0;
+}
+
+[data-tooltip]:hover::after {
+  display: block;
+}

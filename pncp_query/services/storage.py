@@ -1,16 +1,17 @@
-"""Persistência leve em SQLite para o resultado da análise de atas.
+"""Persistência leve em SQLite/PostgreSQL para o resultado da análise de atas.
 
-Sem servidor: um unico arquivo .db, adequado para rodar em um container.
+Sem servidor: um unico arquivo .db para local, ou PostgreSQL na nuvem AWS.
 Modela contratos e seus participantes (adjudicatario + demais participantes).
 """
 
 import json
 import sqlite3
+import re
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _INITIALIZED_DBS: set[str] = set()
 
@@ -27,7 +28,8 @@ CREATE TABLE IF NOT EXISTS runs (
     finished_at TEXT,
     worker_id TEXT,
     attempt_count INTEGER NOT NULL DEFAULT 0,
-    heartbeat_at TEXT
+    heartbeat_at TEXT,
+    duration_seconds INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS contratos (
@@ -123,35 +125,176 @@ CREATE INDEX IF NOT EXISTS idx_runs_status_created ON runs(status, created_at);
 """
 
 
+class RowWrapper(dict):
+    def __init__(self, d):
+        super().__init__(d)
+        self._keys = list(d.keys())
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return super().__getitem__(self._keys[key])
+        return super().__getitem__(key)
+
+
+class DatabaseCursorWrapper:
+    def __init__(self, cursor, is_postgres):
+        self.cursor = cursor
+        self.is_postgres = is_postgres
+        self._lastrowid = None
+
+    @property
+    def rowcount(self):
+        return self.cursor.rowcount
+
+    @property
+    def lastrowid(self):
+        if self.is_postgres:
+            return self._lastrowid
+        return self.cursor.lastrowid
+
+    def fetchone(self):
+        row = self.cursor.fetchone()
+        if row is None:
+            return None
+        if self.is_postgres:
+            return RowWrapper(row)
+        return row
+
+    def fetchall(self):
+        rows = self.cursor.fetchall()
+        if self.is_postgres:
+            return [RowWrapper(r) for r in rows]
+        return rows
+
+    def execute(self, sql, params=None):
+        sql_pg = sql
+        appended_returning = False
+        
+        if self.is_postgres:
+            if params is not None and not isinstance(params, dict):
+                sql_pg = sql_pg.replace('?', '%s')
+            elif isinstance(params, dict):
+                sql_pg = re.sub(r':([a-zA-Z_][a-zA-Z0-9_]*)', r'%(\1)s', sql_pg)
+
+            if re.match(r'(?i)^\s*INSERT\s+INTO', sql_pg) and 'returning' not in sql_pg.lower():
+                sql_pg = sql_pg.strip().rstrip(';')
+                sql_pg += ' RETURNING id'
+                appended_returning = True
+
+        if params is None:
+            self.cursor.execute(sql_pg)
+        else:
+            self.cursor.execute(sql_pg, params)
+
+        if self.is_postgres and appended_returning:
+            try:
+                row = self.cursor.fetchone()
+                if row:
+                    if isinstance(row, dict):
+                        self._lastrowid = row.get('id') or list(row.values())[0]
+                    else:
+                        self._lastrowid = row[0]
+            except Exception:
+                pass
+        
+        return self
+
+
+class DatabaseConnectionWrapper:
+    def __init__(self, conn, is_postgres):
+        self.conn = conn
+        self.is_postgres = is_postgres
+
+    def execute(self, sql, params=None):
+        cur = self.conn.cursor()
+        wrapper = DatabaseCursorWrapper(cur, self.is_postgres)
+        wrapper.execute(sql, params)
+        return wrapper
+
+    def executescript(self, sql_script):
+        if self.is_postgres:
+            sql_clean = re.sub(r'(?i)PRAGMA\s+[^;]+;', '', sql_script)
+            sql_clean = sql_clean.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+            cur = self.conn.cursor()
+            cur.execute(sql_clean)
+            return DatabaseCursorWrapper(cur, self.is_postgres)
+        else:
+            return self.conn.executescript(sql_script)
+
+    def commit(self):
+        self.conn.commit()
+
+    def rollback(self):
+        self.conn.rollback()
+
+    def close(self):
+        self.conn.close()
+
+
 class Storage:
     def __init__(self, db_path):
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        key = str(self.db_path.resolve())
+        db_str = str(db_path)
+        self.is_postgres = db_str.startswith("postgresql://") or db_str.startswith("postgres://")
+        if self.is_postgres:
+            self.db_url = db_str
+        else:
+            self.db_path = Path(db_path)
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            
+        key = db_str
         if key not in _INITIALIZED_DBS:
             self.init_db()
             _INITIALIZED_DBS.add(key)
 
     @contextmanager
     def connect(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute("PRAGMA foreign_keys = ON")
-        try:
-            yield conn
-            conn.commit()
-        finally:
-            conn.close()
+        if self.is_postgres:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            conn = psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+            wrapped_conn = DatabaseConnectionWrapper(conn, True)
+            try:
+                yield wrapped_conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+        else:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+            conn.execute("PRAGMA foreign_keys = ON")
+            wrapped_conn = DatabaseConnectionWrapper(conn, False)
+            try:
+                yield wrapped_conn
+                conn.commit()
+            finally:
+                conn.close()
 
     def init_db(self):
         with self.connect() as conn:
-            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            if self.is_postgres:
+                conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)")
+                cur = conn.execute("SELECT version FROM schema_version LIMIT 1")
+                row = cur.fetchone()
+                version = row["version"] if row else 0
+            else:
+                version = conn.execute("PRAGMA user_version").fetchone()[0]
+
             if version < SCHEMA_VERSION:
                 self._run_migrations(conn, version)
+            
             conn.executescript(SCHEMA)
-            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            
+            if self.is_postgres:
+                conn.execute("DELETE FROM schema_version")
+                conn.execute("INSERT INTO schema_version (version) VALUES (%s)", (SCHEMA_VERSION,))
+            else:
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
 
     def _run_migrations(self, conn, current_version):
         if current_version == 0:
@@ -196,6 +339,11 @@ class Storage:
                     conn.execute(f"ALTER TABLE runs ADD COLUMN {coluna}")
                 except sqlite3.OperationalError:
                     pass
+        if current_version < 8:
+            try:
+                conn.execute("ALTER TABLE runs ADD COLUMN duration_seconds INTEGER NOT NULL DEFAULT 0")
+            except (sqlite3.OperationalError, Exception):
+                pass
 
     def criar_run(self, run_id, params_json="{}"):
         now = _now()
@@ -210,9 +358,19 @@ class Storage:
         return run_id
 
     def criar_run_se_disponivel(self, run_id, params_json="{}"):
-        """Cria a run somente se não houver outra queued/running."""
+        """Cria a run somente se não houver outra queued/running (apenas para SQLite)."""
         now = _now()
         with self.connect() as conn:
+            if self.is_postgres:
+                conn.execute(
+                    """
+                    INSERT INTO runs (id, status, progress, message, params_json, created_at)
+                    VALUES (?, 'queued', 0, 'Análise na fila.', ?, ?)
+                    """,
+                    (run_id, params_json, now),
+                )
+                return run_id
+            
             conn.execute("BEGIN IMMEDIATE")
             ativa = conn.execute(
                 "SELECT id FROM runs WHERE status IN ('queued', 'running') LIMIT 1"
@@ -260,27 +418,53 @@ class Storage:
         """Reivindica, em uma única transação, a run queued mais antiga."""
         now = _now()
         with self.connect() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            run = conn.execute(
-                "SELECT * FROM runs WHERE status = 'queued' ORDER BY created_at ASC, id ASC LIMIT 1"
-            ).fetchone()
-            if not run:
-                return None
-            cursor = conn.execute(
-                """
-                UPDATE runs
-                SET status = 'running', progress = 0, message = 'Análise iniciada.',
-                    started_at = COALESCE(started_at, ?), heartbeat_at = ?, worker_id = ?,
-                    attempt_count = attempt_count + 1
-                WHERE id = ? AND status = 'queued'
-                """,
-                (now, now, worker_id, run["id"]),
-            )
-            if cursor.rowcount != 1:
-                return None
-            return dict(conn.execute("SELECT * FROM runs WHERE id = ?", (run["id"],)).fetchone())
+            if self.is_postgres:
+                cur = conn.execute(
+                    """
+                    SELECT id FROM runs 
+                    WHERE status = 'queued' 
+                    ORDER BY created_at ASC, id ASC 
+                    LIMIT 1 
+                    FOR UPDATE SKIP LOCKED
+                    """
+                )
+                run = cur.fetchone()
+                if not run:
+                    return None
+                
+                conn.execute(
+                    """
+                    UPDATE runs
+                    SET status = 'running', progress = 0, message = 'Análise iniciada.',
+                        started_at = COALESCE(started_at, ?), heartbeat_at = ?, worker_id = ?,
+                        attempt_count = attempt_count + 1
+                    WHERE id = ?
+                    """,
+                    (now, now, worker_id, run["id"]),
+                )
+                return dict(conn.execute("SELECT * FROM runs WHERE id = ?", (run["id"],)).fetchone())
+            else:
+                conn.execute("BEGIN IMMEDIATE")
+                run = conn.execute(
+                    "SELECT * FROM runs WHERE status = 'queued' ORDER BY created_at ASC, id ASC LIMIT 1"
+                ).fetchone()
+                if not run:
+                    return None
+                cursor = conn.execute(
+                    """
+                    UPDATE runs
+                    SET status = 'running', progress = 0, message = 'Análise iniciada.',
+                        started_at = COALESCE(started_at, ?), heartbeat_at = ?, worker_id = ?,
+                        attempt_count = attempt_count + 1
+                    WHERE id = ? AND status = 'queued'
+                    """,
+                    (now, now, worker_id, run["id"]),
+                )
+                if cursor.rowcount != 1:
+                    return None
+                return dict(conn.execute("SELECT * FROM runs WHERE id = ?", (run["id"],)).fetchone())
 
-    def heartbeat_run(self, run_id, worker_id, progress=None, message=None):
+    def heartbeat_run(self, run_id, worker_id, progress=None, message=None, duration_seconds=None):
         updates = ["heartbeat_at = ?"]
         params = [_now()]
         if progress is not None:
@@ -289,6 +473,9 @@ class Storage:
         if message is not None:
             updates.append("message = ?")
             params.append(str(message))
+        if duration_seconds is not None:
+            updates.append("duration_seconds = ?")
+            params.append(int(duration_seconds))
         params.extend((run_id, worker_id))
         with self.connect() as conn:
             cursor = conn.execute(
@@ -297,25 +484,33 @@ class Storage:
             )
             return cursor.rowcount == 1
 
-    def complete_claimed_run(self, run_id, worker_id, message="Análise concluída."):
+    def complete_claimed_run(self, run_id, worker_id, message="Análise concluída.", duration_seconds=None):
         now = _now()
+        updates = ["status = 'done'", "progress = 100", "message = ?", "error = ''", "heartbeat_at = ?", "finished_at = ?"]
+        params = [message, now, now]
+        if duration_seconds is not None:
+            updates.append("duration_seconds = ?")
+            params.append(int(duration_seconds))
+        params.extend((run_id, worker_id))
         with self.connect() as conn:
             cursor = conn.execute(
-                """UPDATE runs SET status = 'done', progress = 100, message = ?, error = '',
-                   heartbeat_at = ?, finished_at = ?
-                   WHERE id = ? AND status = 'running' AND worker_id = ?""",
-                (message, now, now, run_id, worker_id),
+                f"UPDATE runs SET {', '.join(updates)} WHERE id = ? AND status = 'running' AND worker_id = ?",
+                params,
             )
             return cursor.rowcount == 1
 
-    def fail_claimed_run(self, run_id, worker_id, error, message="Análise falhou."):
+    def fail_claimed_run(self, run_id, worker_id, error, message="Análise falhou.", duration_seconds=None):
         now = _now()
+        updates = ["status = 'error'", "progress = 100", "message = ?", "error = ?", "heartbeat_at = ?", "finished_at = ?"]
+        params = [message, str(error), now, now]
+        if duration_seconds is not None:
+            updates.append("duration_seconds = ?")
+            params.append(int(duration_seconds))
+        params.extend((run_id, worker_id))
         with self.connect() as conn:
             cursor = conn.execute(
-                """UPDATE runs SET status = 'error', progress = 100, message = ?, error = ?,
-                   heartbeat_at = ?, finished_at = ?
-                   WHERE id = ? AND status = 'running' AND worker_id = ?""",
-                (message, str(error), now, now, run_id, worker_id),
+                f"UPDATE runs SET {', '.join(updates)} WHERE id = ? AND status = 'running' AND worker_id = ?",
+                params,
             )
             return cursor.rowcount == 1
 
