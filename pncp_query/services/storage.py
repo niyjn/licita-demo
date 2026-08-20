@@ -6,6 +6,7 @@ it intentionally contains no DDL, backend detection, or SQL dialect translation.
 
 import json
 from contextlib import contextmanager
+from datetime import datetime
 
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor
@@ -110,7 +111,7 @@ class Storage:
                 (worker_id,),
             )
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return _as_dict(row) if row else None
 
     def heartbeat_run(self, run_id, worker_id, progress=None, message=None, duration_seconds=None):
         updates, params = ["heartbeat_at = now()"], []
@@ -166,13 +167,13 @@ class Storage:
         with self.connect() as cursor:
             cursor.execute("SELECT * FROM runs WHERE id = %s", (run_id,))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return _as_dict(row) if row else None
 
     def ultima_run(self):
         with self.connect() as cursor:
             cursor.execute("SELECT * FROM runs ORDER BY created_at DESC, id DESC LIMIT 1")
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return _as_dict(row) if row else None
 
     def listar_runs(self, limit=20, offset=0, status=None):
         where, params = "", []
@@ -187,7 +188,7 @@ class Storage:
                     GROUP BY r.id ORDER BY r.created_at DESC, r.id DESC LIMIT %s OFFSET %s""",
                 params,
             )
-            return [dict(row) for row in cursor.fetchall()]
+            return [_as_dict(row) for row in cursor.fetchall()]
 
     def contar_runs(self, status=None):
         query, params = "SELECT COUNT(*) AS total FROM runs", []
@@ -214,7 +215,7 @@ class Storage:
     def listar_perfis(self):
         with self.connect() as cursor:
             cursor.execute("SELECT id, nome, termos_json, created_at FROM perfis_busca ORDER BY lower(nome), id")
-            return [dict(row) for row in cursor.fetchall()]
+            return [_as_dict(row) for row in cursor.fetchall()]
 
     def excluir_perfil(self, perfil_id):
         with self.connect() as cursor:
@@ -279,7 +280,7 @@ class Storage:
         query += " ORDER BY contrato_id, cnpj, page_number, id"
         with self.connect() as cursor:
             cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
+            return [_as_dict(row) for row in cursor.fetchall()]
 
     def salvar_metricas_funil(self, contrato_id, run_id, metricas):
         values = {**_metricas_defaults(), **metricas, "contrato_id": contrato_id, "run_id": run_id}
@@ -299,13 +300,13 @@ class Storage:
             params.append(disposition)
         with self.connect() as cursor:
             cursor.execute(query + " ORDER BY disposition, cnpj", params)
-            return [dict(row) for row in cursor.fetchall()]
+            return [_as_dict(row) for row in cursor.fetchall()]
 
     def somar_metricas_run(self, run_id):
         aliases = ", ".join(f"COALESCE(SUM({name}), 0) AS {name}" for name in _metricas_defaults())
         with self.connect() as cursor:
             cursor.execute(f"SELECT {aliases} FROM metricas_funil WHERE run_id = %s", (run_id,))
-            return dict(cursor.fetchone())
+            return _as_dict(cursor.fetchone())
 
     def contar_contratos_status(self, run_id):
         with self.connect() as cursor:
@@ -314,7 +315,7 @@ class Storage:
                    GROUP BY status, motivo_status ORDER BY status, motivo_status""",
                 (run_id,),
             )
-            return [dict(row) for row in cursor.fetchall()]
+            return [_as_dict(row) for row in cursor.fetchall()]
 
     def listar_contratos(self, uf=None, run_id=None, incluir_ocultos=True):
         filters, params = [], []
@@ -329,14 +330,14 @@ class Storage:
         where = " WHERE " + " AND ".join(filters) if filters else ""
         with self.connect() as cursor:
             cursor.execute("SELECT * FROM contratos" + where + " ORDER BY data_publicacao DESC", params)
-            contracts = [dict(row) for row in cursor.fetchall()]
+            contracts = [_as_dict(row) for row in cursor.fetchall()]
             for contract in contracts:
                 cursor.execute("SELECT cnpj, nome, papel, valor_homologado, situacao_cadastral FROM participantes WHERE contrato_id = %s ORDER BY papel, nome", (contract["id"],))
-                contract["participantes"] = [dict(row) for row in cursor.fetchall()]
+                contract["participantes"] = [_as_dict(row) for row in cursor.fetchall()]
                 cursor.execute("SELECT cnpj, nome, source, disposition, reason, origin_file, situacao_cadastral FROM cnpjs_auditoria WHERE contrato_id = %s ORDER BY disposition, cnpj", (contract["id"],))
-                contract["auditoria"] = [dict(row) for row in cursor.fetchall()]
+                contract["auditoria"] = [_as_dict(row) for row in cursor.fetchall()]
                 cursor.execute("SELECT cnpj, origin_file, scan_pass, page_number, category, signal, excerpt FROM cnpj_evidencias WHERE contrato_id = %s ORDER BY cnpj, page_number, id", (contract["id"],))
-                contract["evidencias"] = [dict(row) for row in cursor.fetchall()]
+                contract["evidencias"] = [_as_dict(row) for row in cursor.fetchall()]
             return contracts
 
     def salvar_documento(self, run_id, source_url, *, contrato_id=None, s3_bucket=None, s3_key=None, sha256=None,
@@ -356,7 +357,7 @@ class Storage:
     def listar_documentos(self, run_id):
         with self.connect() as cursor:
             cursor.execute("SELECT * FROM documentos WHERE run_id = %s ORDER BY id", (run_id,))
-            return [dict(row) for row in cursor.fetchall()]
+            return [_as_dict(row) for row in cursor.fetchall()]
 
 
 def _contrato_defaults(contrato):
@@ -371,3 +372,8 @@ def _metricas_defaults():
         "documentos_listados": 0, "documentos_prioritarios_lidos": 0, "documentos_fallback_lidos": 0,
         "documentos_ignorados": 0, "documentos_duplicados": 0,
     }
+
+
+def _as_dict(row):
+    """Keep the public API JSON/template-safe while DB timestamps stay TIMESTAMPTZ."""
+    return {key: value.isoformat() if isinstance(value, datetime) else value for key, value in dict(row).items()}

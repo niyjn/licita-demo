@@ -1,14 +1,13 @@
 import json
 import re
-import sqlite3
 import unicodedata
 from math import ceil
-from pathlib import Path
 from uuid import uuid4
 
+from psycopg2 import IntegrityError
 from flask import Flask, jsonify, make_response, redirect, render_template, request, url_for
 
-from pncp_query.config import AREAS, DB_PATH, UFS, janela_padrao
+from pncp_query.config import AREAS, DATABASE_URL, UFS, janela_padrao, require_database_url
 from pncp_query.services.storage import Storage
 
 AREA_LABELS = {
@@ -84,9 +83,11 @@ def create_app(config=None):
         static_url_path="/design-system",
         template_folder="templates",
     )
-    app.config.update(DB_PATH=DB_PATH)
+    app.config.update(DATABASE_URL=DATABASE_URL)
     if config:
         app.config.update(config)
+    storage = app.config.pop("STORAGE", None) or Storage(app.config.get("DATABASE_URL") or require_database_url())
+    app.extensions["storage"] = storage
 
     @app.template_filter("highlight_signal")
     def highlight_signal_filter(excerpt, signal):
@@ -111,15 +112,14 @@ def create_app(config=None):
 
     @app.get("/")
     def index():
-        storage = Storage(app.config["DB_PATH"])
         run = storage.ultima_run()
         if run:
-            return _render_run(app.config["DB_PATH"], run["id"])
-        return _render_dashboard(app.config["DB_PATH"], run=None)
+            return _render_run(run["id"])
+        return _render_dashboard(run=None)
 
     @app.get("/analises/<run_id>")
     def ver_analise(run_id):
-        return _render_run(app.config["DB_PATH"], run_id)
+        return _render_run(run_id)
 
     @app.get("/runs")
     def listar_runs():
@@ -132,7 +132,6 @@ def create_app(config=None):
             return jsonify({"error": "invalid_status"}), 400
 
         por_pagina = 20
-        storage = Storage(app.config["DB_PATH"])
         total = storage.contar_runs(status=status)
         total_paginas = max(1, ceil(total / por_pagina))
         pagina = min(pagina, total_paginas)
@@ -157,7 +156,6 @@ def create_app(config=None):
 
     @app.post("/analises/<run_id>/excluir")
     def excluir_analise(run_id):
-        storage = Storage(app.config["DB_PATH"])
         run = storage.obter_run(run_id)
         if not run:
             return jsonify({"error": "run_not_found"}), 404
@@ -169,7 +167,6 @@ def create_app(config=None):
     @app.get("/analises/<run_id>/cnpjs")
     def listar_cnpjs(run_id):
         disposition = request.args.get("disposition")
-        storage = Storage(app.config["DB_PATH"])
         registros = storage.listar_cnpjs_auditoria(run_id, disposition=disposition)
         evidencias = {}
         for evidencia in storage.listar_evidencias_cnpj(run_id):
@@ -178,14 +175,13 @@ def create_app(config=None):
             registro["evidencias"] = evidencias.get(registro["cnpj"], [])
         return jsonify({"run_id": run_id, "disposition": disposition, "cnpjs": registros})
 
-    def _render_run(db_path, run_id):
-        storage = Storage(db_path)
+    def _render_run(run_id):
         run = storage.obter_run(run_id)
         if not run:
             return jsonify({"error": "run_not_found"}), 404
-        return _render_dashboard(db_path, run)
+        return _render_dashboard(run)
 
-    def _render_dashboard(db_path, run):
+    def _render_dashboard(run):
         run_params = None
         if run and run.get("params_json"):
             try:
@@ -200,15 +196,15 @@ def create_app(config=None):
             uf = "SP"
 
         incluir_ocultos = request.args.get("mostrar") == "ocultos"
-        todos = _listar_contratos(db_path, uf, run_id=run["id"] if run else None, incluir_ocultos=True)
+        todos = _listar_contratos(storage, uf, run_id=run["id"] if run else None, incluir_ocultos=True)
         contratos_descartados = [c for c in todos if c.get("status") == "descartado"]
         contratos = [
             c for c in todos
             if c.get("status") != "descartado" and (incluir_ocultos or c.get("status") == "final")
         ]
-        resumo = _resumo_run(db_path, run) if run else _resumo_contratos(contratos)
-        documentos = _documentos_extraidos(db_path, run["id"]) if run else []
-        funil_contratos = _funil_contratos_run(db_path, run["id"]) if run else None
+        resumo = _resumo_run(storage, run) if run else _resumo_contratos(contratos)
+        documentos = _documentos_extraidos(storage, run["id"]) if run else []
+        funil_contratos = _funil_contratos_run(storage, run["id"]) if run else None
         return render_template(
             "index.html",
             areas=[{"value": area, "label": AREA_LABELS.get(area, area)} for area in AREAS],
@@ -233,25 +229,14 @@ def create_app(config=None):
         except ValueError as e:
             return jsonify({"error": "invalid_input", "message": str(e)}), 400
         run_id = uuid4().hex
-        storage = Storage(app.config["DB_PATH"])
         storage.limpar_runs_travadas(timeout_segundos=3600)
-        if not storage.criar_run_se_disponivel(run_id, params_json=_params_json(payload)):
-            return (
-                jsonify(
-                    {
-                        "error": "analysis_in_progress",
-                        "message": "Já existe uma análise em andamento. Aguarde a conclusão antes de iniciar outra.",
-                    }
-                ),
-                409,
-            )
-
+        storage.criar_run_se_disponivel(run_id, params_json=_params_json(payload))
         return jsonify({"run_id": run_id}), 202
 
     @app.get("/perfis")
     def listar_perfis():
         perfis = []
-        for perfil in Storage(app.config["DB_PATH"]).listar_perfis():
+        for perfil in storage.listar_perfis():
             perfil["termos"] = _json_lista(perfil.pop("termos_json", "[]"))
             perfis.append(perfil)
         return jsonify({"perfis": perfis})
@@ -267,20 +252,20 @@ def create_app(config=None):
         except ValueError as exc:
             return jsonify({"error": "invalid_terms", "message": str(exc)}), 400
         try:
-            perfil_id = Storage(app.config["DB_PATH"]).salvar_perfil(nome, termos)
-        except sqlite3.IntegrityError:
+            perfil_id = storage.salvar_perfil(nome, termos)
+        except IntegrityError:
             return jsonify({"error": "duplicate_name", "message": "Já existe um modelo com esse nome."}), 409
         return jsonify({"id": perfil_id, "nome": nome, "termos": termos}), 201
 
     @app.delete("/perfis/<int:perfil_id>")
     def excluir_perfil(perfil_id):
-        if not Storage(app.config["DB_PATH"]).excluir_perfil(perfil_id):
+        if not storage.excluir_perfil(perfil_id):
             return jsonify({"error": "profile_not_found"}), 404
         return "", 204
 
     @app.get("/analises/<run_id>/status")
     def status_analise(run_id):
-        run = Storage(app.config["DB_PATH"]).obter_run(run_id)
+        run = storage.obter_run(run_id)
         if not run:
             return jsonify({"error": "run_not_found"}), 404
         return jsonify(
@@ -297,7 +282,6 @@ def create_app(config=None):
 
     @app.get("/analises/<run_id>/exportar")
     def exportar_analise(run_id):
-        storage = Storage(app.config["DB_PATH"])
         run = storage.obter_run(run_id)
         if not run:
             return jsonify({"error": "run_not_found"}), 404
@@ -329,6 +313,24 @@ def create_app(config=None):
     def healthz():
         return jsonify({"status": "ok"})
 
+    @app.get("/readyz")
+    def readyz():
+        try:
+            from alembic.config import Config
+            from alembic.script import ScriptDirectory
+
+            storage.ping()
+            with storage.connect() as cursor:
+                cursor.execute("SELECT version_num FROM alembic_version LIMIT 1")
+                revision = cursor.fetchone()
+            alembic_config = Config(str(app.root_path + "/alembic.ini"))
+            ready = revision is not None and revision["version_num"] == ScriptDirectory.from_config(alembic_config).get_current_head()
+        except Exception:
+            ready = False
+        if not ready:
+            return jsonify({"status": "not_ready"}), 503
+        return jsonify({"status": "ready"})
+
     @app.errorhandler(404)
     def page_not_found(e):
         return render_template(
@@ -350,10 +352,8 @@ def create_app(config=None):
     return app
 
 
-def _listar_contratos(db_path, uf, run_id=None, incluir_ocultos=True):
-    if not Path(db_path).exists():
-        return []
-    return Storage(db_path).listar_contratos(uf, run_id=run_id, incluir_ocultos=incluir_ocultos)
+def _listar_contratos(storage, uf, run_id=None, incluir_ocultos=True):
+    return storage.listar_contratos(uf, run_id=run_id, incluir_ocultos=incluir_ocultos)
 
 
 def _resumo_contratos(contratos):
@@ -373,10 +373,8 @@ def _resumo_contratos(contratos):
     }
 
 
-def _funil_contratos_run(db_path, run_id):
-    if not Path(db_path).exists():
-        return None
-    rows = Storage(db_path).contar_contratos_status(run_id)
+def _funil_contratos_run(storage, run_id):
+    rows = storage.contar_contratos_status(run_id)
     funil = {"total": 0, "final": 0, "vazio": [], "descartado": []}
     for row in rows:
         funil["total"] += row["total"]
@@ -400,10 +398,10 @@ def _rotulo_motivo_curto(motivo):
     return _MOTIVO_CURTO.get(motivo) or _rotulo_motivo(motivo)
 
 
-def _resumo_run(db_path, run):
-    metricas = Storage(db_path).somar_metricas_run(run["id"])
+def _resumo_run(storage, run):
+    metricas = storage.somar_metricas_run(run["id"])
     return {
-        "contratos": len(Storage(db_path).listar_contratos(run_id=run["id"], incluir_ocultos=True)),
+        "contratos": len(storage.listar_contratos(run_id=run["id"], incluir_ocultos=True)),
         **metricas,
     }
 
@@ -433,9 +431,9 @@ def _contrato_view(contrato):
     return contrato
 
 
-def _documentos_extraidos(db_path, run_id):
+def _documentos_extraidos(storage, run_id):
     documentos = {}
-    for registro in Storage(db_path).listar_cnpjs_auditoria(run_id):
+    for registro in storage.listar_cnpjs_auditoria(run_id):
         if registro.get("source") != "ata":
             continue
         arquivos = [item.strip() for item in (registro.get("origin_file") or "Ata sem nome").split(",") if item.strip()]

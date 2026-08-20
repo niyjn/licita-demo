@@ -1,9 +1,8 @@
 import unicodedata
 from dataclasses import asdict, is_dataclass
 from hashlib import sha256
-from pathlib import Path
 
-from pncp_query.config import AREAS, DB_PATH, PDF_DIR, PDF_FALLBACK_MAX_FILES
+from pncp_query.config import AREAS, PDF_DIR, PDF_FALLBACK_MAX_FILES
 from pncp_query.models import LoteArquivosPNCP
 from pncp_query.services.candidate_filter import cnpj_valido
 from pncp_query.services.common import somente_digitos
@@ -12,7 +11,6 @@ from pncp_query.services.enrichment_service import EnrichmentService
 from pncp_query.services.pdf_parser_service import PDFParserService
 from pncp_query.services.pncp_search_service import PNCPSearchService
 from pncp_query.services.resultado_service import ResultadoService
-from pncp_query.services.storage import Storage
 
 DESCARTE_DIRETO_TERMOS = (
     "dispensa",
@@ -25,7 +23,7 @@ DESCARTE_DIRETO_TERMOS = (
 )
 
 
-def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id=None, progress=None, termos=None):
+def analisar(area, data_inicial, data_final, uf, limite, storage, run_id=None, progress=None, termos=None):
     if callable(run_id) and progress is None:
         progress = run_id
         run_id = None
@@ -34,8 +32,6 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
         raise ValueError(f"Área desconhecida: {area}")
     palavras_chave = list(termos) if termos else AREAS[area]
 
-    db_path = Path(db_path)
-    storage = Storage(db_path)
     search = PNCPSearchService()
     downloader = DownloaderService()
     parser = PDFParserService()

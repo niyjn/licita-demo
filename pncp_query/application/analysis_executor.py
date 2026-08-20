@@ -30,7 +30,7 @@ class AnalysisExecutor:
                 kwargs["termos"] = list(command.termos)
             self.analysis_func(
                 command.area, command.data_inicial, command.data_final, command.uf,
-                command.limite, self.storage.db_path, **kwargs,
+                command.limite, self.storage, **kwargs,
             )
         except Exception as exc:
             elapsed_seconds = int(time.time() - start_time)
