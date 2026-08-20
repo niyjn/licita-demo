@@ -1,7 +1,12 @@
 FROM python:3.11-slim
 
+ARG APP_VERSION=dev
+LABEL org.opencontainers.image.version=$APP_VERSION
+LABEL org.opencontainers.image.revision=$APP_VERSION
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    APP_VERSION=$APP_VERSION
 
 WORKDIR /app
 
@@ -15,7 +20,6 @@ RUN apt-get update \
 RUN useradd -m -u 1000 appuser
 
 RUN mkdir -p /app/output && chown -R appuser:appuser /app/output
-VOLUME /app/output
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

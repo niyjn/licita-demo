@@ -1,6 +1,7 @@
-"""Worker de fila SQLite: ``python -m pncp_query.worker [--once]``."""
+"""Worker PostgreSQL: ``python -m pncp_query.worker [--once]``."""
 
 import argparse
+import logging
 import os
 import signal
 import socket
@@ -9,7 +10,7 @@ from uuid import uuid4
 
 from pncp_query.application.analysis_command import AnalysisCommand
 from pncp_query.application.analysis_executor import AnalysisExecutor
-from pncp_query.config import DB_PATH
+from pncp_query.config import APP_VERSION, require_database_url
 from pncp_query.services.storage import Storage
 
 
@@ -55,13 +56,22 @@ def main(argv=None, storage=None, executor=None):
     parser.add_argument("--once", action="store_true", help="Processa no máximo uma análise e encerra.")
     parser.add_argument("--poll-interval", type=float, default=2.0)
     args = parser.parse_args(argv)
-    storage = storage if storage is not None else Storage(DB_PATH)
+    owns_storage = storage is None
+    storage = storage if storage is not None else Storage(require_database_url())
     executor = executor if executor is not None else AnalysisExecutor(storage)
-    if args.once:
-        storage.limpar_runs_travadas()
-        run_once(storage, executor, worker_id())
-    else:
-        run_forever(storage, executor, worker_id(), args.poll_interval)
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    logger.info("startup component=worker app_version=%s", APP_VERSION)
+    try:
+        if args.once:
+            storage.limpar_runs_travadas()
+            run_once(storage, executor, worker_id())
+        else:
+            run_forever(storage, executor, worker_id(), args.poll_interval)
+    finally:
+        if owns_storage:
+            storage.close()
     return 0
 
 

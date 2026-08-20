@@ -7,3 +7,5 @@ pdf2image
 pytesseract
 psycopg2-binary>=2.9.0
 boto3>=1.34.0
+alembic>=1.13.0
+SQLAlchemy>=2.0.0

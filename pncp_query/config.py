@@ -36,32 +36,39 @@ def _env_float(nome, padrao):
 
 _carregar_env_local()
 
-# Try to write to resolved paths, fallback to home directory if not writable (e.g., Docker volume permission issues)
-_resolved_db_path = Path(os.getenv("DB_PATH", OUTPUT_DIR / "analise.db"))
-_resolved_pdf_dir = Path(os.getenv("PDF_DIR", OUTPUT_DIR / "pdfs"))
+PDF_DIR = Path(os.getenv("PDF_DIR", OUTPUT_DIR / "pdfs"))
 
-try:
-    _resolved_db_path.parent.mkdir(parents=True, exist_ok=True)
-    # Test if parent directory is writable
-    _test_file = _resolved_db_path.parent / ".write_test"
-    _test_file.touch()
-    _test_file.unlink()
 
-    # Test if the database file itself is writable if it exists
-    if _resolved_db_path.exists():
-        with open(_resolved_db_path, "a"):
-            pass
-except Exception:
-    # Fallback to user home directory (always writable by the running user)
-    _resolved_db_path = Path.home() / "analise.db"
-    _resolved_pdf_dir = Path.home() / "pdfs"
+def normalize_database_url(database_url):
+    """Normalize the Heroku-era scheme without decoding URL-encoded secrets."""
+    database_url = str(database_url or "").strip()
+    if database_url.startswith("postgres://"):
+        return "postgresql://" + database_url.removeprefix("postgres://")
+    return database_url
 
-DB_PATH = _resolved_db_path
-PDF_DIR = _resolved_pdf_dir
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+# PostgreSQL is deliberately the only database backend.  Do not add a local-file
+# fallback: web and worker must fail fast instead of silently using different data.
+DATABASE_URL = normalize_database_url(os.getenv("DATABASE_URL"))
+DB_POOL_MIN = _env_int("DB_POOL_MIN", 1)
+DB_POOL_MAX = _env_int("DB_POOL_MAX", 5)
+APP_VERSION = os.getenv("APP_VERSION", "dev").strip() or "dev"
+
+# Keep the names already used by ECS task definitions.  The short aliases make
+# local configuration friendlier without changing production deployments.
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME") or os.getenv("S3_BUCKET")
+AWS_REGION = os.getenv("AWS_REGION") or os.getenv("S3_REGION") or "us-east-1"
+
+
+def require_database_url():
+    """Return the configured PostgreSQL DSN or fail without disclosing it."""
+    database_url = normalize_database_url(os.getenv("DATABASE_URL"))
+    if not database_url:
+        raise RuntimeError("DATABASE_URL é obrigatória; configure uma URL PostgreSQL antes de iniciar o serviço.")
+    if not database_url.startswith(("postgresql://", "postgres://")):
+        raise RuntimeError("DATABASE_URL deve apontar para PostgreSQL.")
+    return database_url
+
 
 HTTP_MAX_RETRIES = _env_int("HTTP_MAX_RETRIES", 5)
 HTTP_BACKOFF_BASE_SECONDS = _env_float("HTTP_BACKOFF_BASE_SECONDS", 2.0)
@@ -199,6 +206,7 @@ PALAVRAS_ARQUIVO_EXCLUIR = [
 
 PDF_MAX_BYTES = _env_int("PDF_MAX_BYTES", 15 * 1024 * 1024)
 PDF_FALLBACK_MAX_FILES = _env_int("PDF_FALLBACK_MAX_FILES", 3)
+
 
 def janela_padrao():
     hoje = datetime.now()

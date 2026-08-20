@@ -29,10 +29,7 @@ def test_extrair_resultado_flow(mock_extract):
 def test_extrai_cnpj_pontuado_continuo_e_separado_com_pagina(mock_extract):
     service = PDFParserService()
     mock_extract.return_value = (
-        "Licitante: 11.222.333/0001-81\n"
-        "Texto geral 22333444000102\n"
-        "\f"
-        "Empresa desclassificada CNPJ 33 444 555 0001 03",
+        "Licitante: 11.222.333/0001-81\nTexto geral 22333444000102\n\fEmpresa desclassificada CNPJ 33 444 555 0001 03",
         2,
     )
 
@@ -104,15 +101,14 @@ def test_sinal_de_responsavel_mais_proposta_permanece_participante(mock_extract)
 def test_divisor_de_aguas_sem_cortar_palavras_e_sem_contaminar(mock_extract):
     service = PDFParserService()
     mock_extract.return_value = (
-        "Empresa vencedora: 11.222.333/0001-81\n"
-        "Licitante participante: 22.333.444/0001-02",
+        "Empresa vencedora: 11.222.333/0001-81\nLicitante participante: 22.333.444/0001-02",
         1,
     )
 
     resultado = service.extrair_resultado(Path("dummy.pdf"))
 
     evidencias = {item.cnpj: item for item in resultado.evidencias}
-    
+
     # Ambos devem ser classificados corretamente sem contaminação cruzada
     assert evidencias["11222333000181"].categoria == "vencedor"
     assert evidencias["22333444000102"].categoria == "participante"
@@ -147,14 +143,14 @@ def test_janela_deslizante_e_limites_com_bloco_de_texto_longo(mock_extract):
     # 1. CNPJ 1 deve capturar o sinal "vencedora" que está bem para trás no parágrafo
     assert evidencias["11222333000181"].categoria == "vencedor"
     assert "vencedora" in evidencias["11222333000181"].trecho
-    
+
     # 2. CNPJ 2 e CNPJ 1 dividem o espaço do meio. CNPJ 2 deve capturar "proposta comercial"
     #    mas NÃO deve ser contaminado com o "vencedora" do CNPJ 1 (que está antes do divisor de águas)
     #    e nem com "assinaturas" que está a >150 chars para a frente.
     assert evidencias["22333444000102"].categoria == "participante"
     assert "vencedora" not in evidencias["22333444000102"].trecho
     assert "proposta comercial" in evidencias["22333444000102"].trecho
-    
+
     # 3. CNPJ 3 está longe de todos. Sua janela deve expandir para trás e para frente a 150 chars.
     #    Deve capturar "habilitada" (sinal participante) a cerca de 60 chars para trás.
     #    Deve capturar "contrapropostas" (sinal participante) a 40 chars para frente.

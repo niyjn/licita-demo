@@ -1,8 +1,6 @@
-from pncp_query.services.storage import Storage
 
 
-def test_storage_persiste_metricas_de_vencedor_inferido(tmp_path):
-    storage = Storage(tmp_path / "analise.db")
+def test_storage_persiste_metricas_de_vencedor_inferido(storage):
     storage.criar_run("run-1")
     contrato_id = storage.salvar_contrato(
         {

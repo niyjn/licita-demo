@@ -1,9 +1,8 @@
 import unicodedata
 from dataclasses import asdict, is_dataclass
 from hashlib import sha256
-from pathlib import Path
 
-from pncp_query.config import AREAS, DB_PATH, PDF_DIR, PDF_FALLBACK_MAX_FILES
+from pncp_query.config import AREAS, PDF_DIR, PDF_FALLBACK_MAX_FILES
 from pncp_query.models import LoteArquivosPNCP
 from pncp_query.services.candidate_filter import cnpj_valido
 from pncp_query.services.common import somente_digitos
@@ -12,7 +11,6 @@ from pncp_query.services.enrichment_service import EnrichmentService
 from pncp_query.services.pdf_parser_service import PDFParserService
 from pncp_query.services.pncp_search_service import PNCPSearchService
 from pncp_query.services.resultado_service import ResultadoService
-from pncp_query.services.storage import Storage
 
 DESCARTE_DIRETO_TERMOS = (
     "dispensa",
@@ -25,7 +23,7 @@ DESCARTE_DIRETO_TERMOS = (
 )
 
 
-def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id=None, progress=None, termos=None):
+def analisar(area, data_inicial, data_final, uf, limite, storage, run_id=None, progress=None, termos=None):
     if callable(run_id) and progress is None:
         progress = run_id
         run_id = None
@@ -34,8 +32,6 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
         raise ValueError(f"Área desconhecida: {area}")
     palavras_chave = list(termos) if termos else AREAS[area]
 
-    db_path = Path(db_path)
-    storage = Storage(db_path)
     search = PNCPSearchService()
     downloader = DownloaderService()
     parser = PDFParserService()
@@ -92,15 +88,14 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
         }
         try:
             lote = downloader.listar_arquivos_candidatos(linha, PDF_DIR, chaves)
-            metricas_documentos["documentos_listados"] = (
-                len(lote.prioritarios) + len(lote.fallback) + lote.ignorados
-            )
+            metricas_documentos["documentos_listados"] = len(lote.prioritarios) + len(lote.fallback) + lote.ignorados
             metricas_documentos["documentos_ignorados"] = lote.ignorados
         except Exception as exc:
             _emit(progress, "erro", f"Falha ao listar arquivos de {controle}: {exc}.", indice, total_compras)
             lote = LoteArquivosPNCP()
 
         hashes_processados = set()
+        documentos_processados = []
         _processar_documentos(
             lote.prioritarios,
             "priority",
@@ -112,6 +107,9 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
             progress,
             indice,
             total_compras,
+            run_id=run_id,
+            compra=chaves,
+            documentos_processados=documentos_processados,
         )
         if not _ha_perdedor_confirmavel(adjudicatarios, evidencias, linha.get("orgao_cnpj")):
             _processar_documentos(
@@ -125,6 +123,9 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
                 progress,
                 indice,
                 total_compras,
+                run_id=run_id,
+                compra=chaves,
+                documentos_processados=documentos_processados,
             )
 
         cnpjs_origem = {}
@@ -150,19 +151,21 @@ def analisar(area, data_inicial, data_final, uf, limite, db_path=DB_PATH, run_id
             storage.salvar_cnpjs_auditoria(contrato_id, run_id, auditoria["registros"])
             storage.salvar_evidencias_cnpj(contrato_id, run_id, evidencias)
             storage.salvar_metricas_funil(contrato_id, run_id, auditoria["metricas"])
+            for documento in documentos_processados:
+                storage.salvar_documento(run_id, contrato_id=contrato_id, **documento)
 
         contratos_salvos += 1
         participantes_salvos += len(auditoria["participantes"])
 
         # Limpeza efêmera do disco local em produção (quando S3 estiver ativo)
         from pncp_query.config import S3_BUCKET_NAME
+
         if S3_BUCKET_NAME:
-            for arquivo in (lote.prioritarios + lote.fallback):
-                if hasattr(arquivo, "destino") and isinstance(arquivo.destino, Path):
-                    try:
-                        arquivo.destino.unlink(missing_ok=True)
-                    except Exception:
-                        pass
+            for arquivo in lote.prioritarios + lote.fallback:
+                try:
+                    arquivo.destino.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
     resumo = {"contratos": contratos_salvos, "participantes": participantes_salvos}
     if run_id:
@@ -238,8 +241,7 @@ def _montar_auditoria(
     cnpjs_ata_unicos = {somente_digitos(cnpj) for cnpj in cnpjs_ata if somente_digitos(cnpj)}
     if evidencias is None:
         evidencias = [
-            {"cnpj": cnpj, "category": "participante", "signal": "compatibilidade"}
-            for cnpj in cnpjs_ata_unicos
+            {"cnpj": cnpj, "category": "participante", "signal": "compatibilidade"} for cnpj in cnpjs_ata_unicos
         ]
     evidencias_por_cnpj = {}
     for evidencia in evidencias:
@@ -454,10 +456,22 @@ def _processar_documentos(
     progress,
     indice,
     total_compras,
+    *,
+    run_id=None,
+    compra=None,
+    documentos_processados=None,
 ):
+    documentos_processados = documentos_processados if documentos_processados is not None else []
     for arquivo in arquivos:
         try:
-            downloader.baixar(arquivo)
+            try:
+                documento = downloader.baixar(arquivo, run_id=run_id, compra=compra)
+            except TypeError as exc:
+                if "unexpected keyword" not in str(exc):
+                    raise
+                documento = downloader.baixar(arquivo)
+            if isinstance(documento, dict):
+                documentos_processados.append(documento)
             if not arquivo.destino.exists():
                 metricas["atas_falhas"] += 1
                 continue

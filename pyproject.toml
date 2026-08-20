@@ -5,3 +5,8 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/versions/*.py" = ["E501"]
+"pncp_query/services/storage.py" = ["E501"]
+"tests/test_pdf_parser_service.py" = ["E501"]

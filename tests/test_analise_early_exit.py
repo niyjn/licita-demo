@@ -1,9 +1,8 @@
 import analise
 from pncp_query.models import Licitacao
-from pncp_query.services.storage import Storage
 
 
-def test_analisar_descarta_contrato_direto_sem_abrir_downloads(monkeypatch, tmp_path):
+def test_analisar_descarta_contrato_direto_sem_abrir_downloads(monkeypatch, tmp_path, storage):
     class DirectDiscardSearch:
         def buscar_iter(self, *args, **kwargs):
             yield Licitacao(
@@ -49,10 +48,9 @@ def test_analisar_descarta_contrato_direto_sem_abrir_downloads(monkeypatch, tmp_
     monkeypatch.setattr(analise, "PDFParserService", lambda: None)
     monkeypatch.setattr(analise, "EnrichmentService", FailingEnrichment)
     monkeypatch.setattr(analise, "PDF_DIR", tmp_path / "pdfs")
-    storage = Storage(tmp_path / "analise.db")
     storage.criar_run("run-1")
 
-    resumo = analise.analisar("TI", "2026-03-01", "2026-06-01", "SP", 10, tmp_path / "analise.db", run_id="run-1")
+    resumo = analise.analisar("TI", "2026-03-01", "2026-06-01", "SP", 10, storage, run_id="run-1")
 
     contratos = storage.listar_contratos("SP", run_id="run-1")
     assert resumo["contratos"] == 1

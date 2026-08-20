@@ -2,7 +2,6 @@ from pathlib import Path
 
 import analise
 from pncp_query.models import ArquivoPNCP, EvidenciaCNPJ, Licitacao, LoteArquivosPNCP, ResultadoPDF
-from pncp_query.services.storage import Storage
 
 
 class FakeSearch:
@@ -41,9 +40,7 @@ class FakeDownloader:
     def listar_arquivos_candidatos(self, linha, pdf_dir, chaves):
         destino = Path(pdf_dir) / "ata.pdf"
         destino.parent.mkdir(parents=True, exist_ok=True)
-        return LoteArquivosPNCP(
-            prioritarios=[ArquivoPNCP("Ata", "https://example.test/ata.pdf", destino)]
-        )
+        return LoteArquivosPNCP(prioritarios=[ArquivoPNCP("Ata", "https://example.test/ata.pdf", destino)])
 
     def baixar(self, arquivo):
         arquivo.destino.write_bytes(b"pdf")
@@ -78,11 +75,11 @@ class FakeEnrichment:
             "cnpj": cnpj,
             "razao_social": nome,
             "nome_fantasia": nome,
-            "situacao_cadastral": "ATIVA" if nome else ""
+            "situacao_cadastral": "ATIVA" if nome else "",
         }
 
 
-def test_analisar_persiste_adjudicatario_e_participantes(monkeypatch, tmp_path):
+def test_analisar_persiste_adjudicatario_e_participantes(monkeypatch, tmp_path, storage):
     monkeypatch.setattr(analise, "PNCPSearchService", FakeSearch)
     monkeypatch.setattr(analise, "DownloaderService", FakeDownloader)
     monkeypatch.setattr(analise, "PDFParserService", FakeParser)
@@ -91,9 +88,9 @@ def test_analisar_persiste_adjudicatario_e_participantes(monkeypatch, tmp_path):
     monkeypatch.setattr(analise, "PDF_DIR", tmp_path / "pdfs")
     eventos = []
 
-    resumo = analise.analisar("TI", "2026-03-01", "2026-06-01", "SP", 10, tmp_path / "analise.db", eventos.append)
+    resumo = analise.analisar("TI", "2026-03-01", "2026-06-01", "SP", 10, storage, eventos.append)
 
-    contratos = Storage(tmp_path / "analise.db").listar_contratos("SP")
+    contratos = storage.listar_contratos("SP")
     participantes = contratos[0]["participantes"]
 
     assert resumo == {"contratos": 1, "participantes": 2}
@@ -103,17 +100,16 @@ def test_analisar_persiste_adjudicatario_e_participantes(monkeypatch, tmp_path):
     assert any(evento["etapa"] == "concluido" for evento in eventos)
 
 
-def test_analisar_persiste_funil_auditavel_por_run(monkeypatch, tmp_path):
+def test_analisar_persiste_funil_auditavel_por_run(monkeypatch, tmp_path, storage):
     monkeypatch.setattr(analise, "PNCPSearchService", FakeSearch)
     monkeypatch.setattr(analise, "DownloaderService", FakeDownloader)
     monkeypatch.setattr(analise, "PDFParserService", FakeParser)
     monkeypatch.setattr(analise, "ResultadoService", FakeResultado)
     monkeypatch.setattr(analise, "EnrichmentService", FakeEnrichment)
     monkeypatch.setattr(analise, "PDF_DIR", tmp_path / "pdfs")
-    storage = Storage(tmp_path / "analise.db")
     storage.criar_run("run-1")
 
-    resumo = analise.analisar("TI", "2026-03-01", "2026-06-01", "SP", 10, tmp_path / "analise.db", run_id="run-1")
+    resumo = analise.analisar("TI", "2026-03-01", "2026-06-01", "SP", 10, storage, run_id="run-1")
 
     auditoria = storage.listar_cnpjs_auditoria("run-1")
     disposicoes = {(registro["cnpj"], registro["disposition"]) for registro in auditoria}
@@ -132,7 +128,7 @@ def test_analisar_persiste_funil_auditavel_por_run(monkeypatch, tmp_path):
     assert resumo["resultado_final"] == 2
 
 
-def test_analisar_busca_livre_usa_termos_em_vez_da_area(monkeypatch, tmp_path):
+def test_analisar_busca_livre_usa_termos_em_vez_da_area(monkeypatch, tmp_path, storage):
     class CapturingSearch(FakeSearch):
         termos = None
 
@@ -153,7 +149,7 @@ def test_analisar_busca_livre_usa_termos_em_vez_da_area(monkeypatch, tmp_path):
         "2026-06-01",
         "SP",
         10,
-        tmp_path / "analise.db",
+        storage,
         termos=["firewall", "data center"],
     )
 
@@ -232,7 +228,7 @@ def test_funil_nao_confirma_perdedor_sem_vencedor_estruturado():
     assert auditoria["registros"][-1]["reason"] == "vencedores_indisponiveis"
 
 
-def test_fallback_so_e_processado_quando_prioritario_nao_confirma_perdedor(monkeypatch, tmp_path):
+def test_fallback_so_e_processado_quando_prioritario_nao_confirma_perdedor(monkeypatch, tmp_path, storage):
     class TwoPassDownloader(FakeDownloader):
         def baixar(self, arquivo):
             arquivo.destino.write_bytes(arquivo.destino.name.encode())
@@ -242,9 +238,7 @@ def test_fallback_so_e_processado_quando_prioritario_nao_confirma_perdedor(monke
             pdf_dir = Path(pdf_dir)
             pdf_dir.mkdir(parents=True, exist_ok=True)
             return LoteArquivosPNCP(
-                prioritarios=[
-                    ArquivoPNCP("Ata", "https://example.test/ata.pdf", pdf_dir / "priority.pdf")
-                ],
+                prioritarios=[ArquivoPNCP("Ata", "https://example.test/ata.pdf", pdf_dir / "priority.pdf")],
                 fallback=[
                     ArquivoPNCP(
                         "Documento complementar",
@@ -281,7 +275,6 @@ def test_fallback_so_e_processado_quando_prioritario_nao_confirma_perdedor(monke
     monkeypatch.setattr(analise, "ResultadoService", FakeResultado)
     monkeypatch.setattr(analise, "EnrichmentService", FakeEnrichment)
     monkeypatch.setattr(analise, "PDF_DIR", tmp_path / "pdfs")
-    storage = Storage(tmp_path / "analise.db")
     storage.criar_run("run-1")
 
     resumo = analise.analisar(
@@ -290,7 +283,7 @@ def test_fallback_so_e_processado_quando_prioritario_nao_confirma_perdedor(monke
         "2026-06-01",
         "SP",
         10,
-        tmp_path / "analise.db",
+        storage,
         run_id="run-1",
     )
 
@@ -300,7 +293,7 @@ def test_fallback_so_e_processado_quando_prioritario_nao_confirma_perdedor(monke
     assert resumo["perdedores_final"] == 1
 
 
-def test_fallback_nao_e_processado_quando_prioritario_confirma_perdedor(monkeypatch, tmp_path):
+def test_fallback_nao_e_processado_quando_prioritario_confirma_perdedor(monkeypatch, tmp_path, storage):
     class ConfirmingParser:
         arquivos = []
 
@@ -325,9 +318,7 @@ def test_fallback_nao_e_processado_quando_prioritario_confirma_perdedor(monkeypa
             pdf_dir = Path(pdf_dir)
             pdf_dir.mkdir(parents=True, exist_ok=True)
             return LoteArquivosPNCP(
-                prioritarios=[
-                    ArquivoPNCP("Ata", "https://example.test/ata.pdf", pdf_dir / "priority.pdf")
-                ],
+                prioritarios=[ArquivoPNCP("Ata", "https://example.test/ata.pdf", pdf_dir / "priority.pdf")],
                 fallback=[
                     ArquivoPNCP(
                         "Anexo",
@@ -345,7 +336,7 @@ def test_fallback_nao_e_processado_quando_prioritario_confirma_perdedor(monkeypa
     monkeypatch.setattr(analise, "EnrichmentService", FakeEnrichment)
     monkeypatch.setattr(analise, "PDF_DIR", tmp_path / "pdfs")
 
-    analise.analisar("TI", "2026-03-01", "2026-06-01", "SP", 10, tmp_path / "analise.db")
+    analise.analisar("TI", "2026-03-01", "2026-06-01", "SP", 10, storage)
 
     assert ConfirmingParser.arquivos == ["priority.pdf"]
 
@@ -356,7 +347,7 @@ def test_motivo_descarte_identifica_dispensa_e_inexigibilidade():
         "modalidade_licitacao_nome": "Pregão Eletrônico",
         "title": "Dispensa de licitação para compra emergencial",
         "description": "Aquisição de insumos",
-        "situacao_nome": "Homologada"
+        "situacao_nome": "Homologada",
     }
     assert analise._motivo_descarte(linha_dispensa) == "contratacao_direta_ou_exclusividade:dispensa"
 
@@ -365,7 +356,7 @@ def test_motivo_descarte_identifica_dispensa_e_inexigibilidade():
         "modalidade_licitacao_nome": "Inexigibilidade",
         "title": "Compra de software proprietário",
         "description": "Contratação direta",
-        "situacao_nome": "Homologada"
+        "situacao_nome": "Homologada",
     }
     assert analise._motivo_descarte(linha_inexigibilidade) == "contratacao_direta_ou_exclusividade:inexigibilidade"
 
@@ -374,6 +365,6 @@ def test_motivo_descarte_identifica_dispensa_e_inexigibilidade():
         "modalidade_licitacao_nome": "Concorrência",
         "title": "Aquisição de computadores",
         "description": "Ampla concorrência para TI",
-        "situacao_nome": "Homologada"
+        "situacao_nome": "Homologada",
     }
     assert analise._motivo_descarte(linha_valida) == ""
