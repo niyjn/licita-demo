@@ -35,6 +35,36 @@ def test_healthz_retorna_ok(storage):
     assert response.json == {"status": "ok"}
 
 
+def test_readyz_retorna_ok_quando_banco_e_revision_estao_prontos(storage):
+    app = create_app({"TESTING": True, "STORAGE": storage})
+
+    response = app.test_client().get("/readyz")
+
+    assert response.status_code == 200
+    assert response.json == {"status": "ready"}
+
+
+def test_readyz_retorna_503_com_revision_incorreta(storage):
+    app = create_app({"TESTING": True, "STORAGE": storage})
+    with storage.connect() as cursor:
+        cursor.execute("UPDATE alembic_version SET version_num = %s", ("missing-revision",))
+
+    response = app.test_client().get("/readyz")
+
+    assert response.status_code == 503
+    assert response.json == {"status": "not_ready"}
+
+
+def test_readyz_retorna_503_quando_ping_do_banco_falha(storage, monkeypatch):
+    app = create_app({"TESTING": True, "STORAGE": storage})
+    monkeypatch.setattr(storage, "ping", lambda: (_ for _ in ()).throw(RuntimeError("offline")))
+
+    response = app.test_client().get("/readyz")
+
+    assert response.status_code == 503
+    assert response.json == {"status": "not_ready"}
+
+
 def test_post_analises_cria_run_queued_e_worker_a_conclui_no_postgresql(storage):
     def fake_analysis(area, data_inicial, data_final, uf, limite, storage, run_id=None, progress=None):
         progress({"mensagem": "metade", "atual": 1, "total": 2})
