@@ -2,6 +2,7 @@ FROM python:3.11-slim
 
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.version=$APP_VERSION
+LABEL org.opencontainers.image.revision=$APP_VERSION
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

@@ -102,7 +102,7 @@ Executar somente a imagem inicia apenas o servidor web e é útil para diagnóst
 consome a fila:
 
 ```bash
-docker build -t licita-demo .
+docker build --build-arg APP_VERSION=$(git rev-parse --short HEAD) -t licita-demo .
 docker run --rm -p 8000:8000 \
   -e DATABASE_URL=postgresql://user:password@db.example:5432/licita \
   -e APP_VERSION=$(git rev-parse --short HEAD) \
