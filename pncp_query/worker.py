@@ -1,6 +1,7 @@
 """Worker PostgreSQL: ``python -m pncp_query.worker [--once]``."""
 
 import argparse
+import logging
 import os
 import signal
 import socket
@@ -9,7 +10,7 @@ from uuid import uuid4
 
 from pncp_query.application.analysis_command import AnalysisCommand
 from pncp_query.application.analysis_executor import AnalysisExecutor
-from pncp_query.config import require_database_url
+from pncp_query.config import APP_VERSION, require_database_url
 from pncp_query.services.storage import Storage
 
 
@@ -58,6 +59,10 @@ def main(argv=None, storage=None, executor=None):
     owns_storage = storage is None
     storage = storage if storage is not None else Storage(require_database_url())
     executor = executor if executor is not None else AnalysisExecutor(storage)
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    logger.info("startup component=worker app_version=%s", APP_VERSION)
     try:
         if args.once:
             storage.limpar_runs_travadas()

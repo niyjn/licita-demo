@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import unicodedata
 from math import ceil
@@ -7,7 +8,7 @@ from uuid import uuid4
 from flask import Flask, jsonify, make_response, redirect, render_template, request, url_for
 from psycopg2 import IntegrityError
 
-from pncp_query.config import AREAS, DATABASE_URL, UFS, janela_padrao, require_database_url
+from pncp_query.config import APP_VERSION, AREAS, DATABASE_URL, UFS, janela_padrao, require_database_url
 from pncp_query.services.storage import Storage
 
 AREA_LABELS = {
@@ -83,11 +84,15 @@ def create_app(config=None):
         static_url_path="/design-system",
         template_folder="templates",
     )
-    app.config.update(DATABASE_URL=DATABASE_URL)
+    app.config.update(DATABASE_URL=DATABASE_URL, APP_VERSION=APP_VERSION)
     if config:
         app.config.update(config)
     storage = app.config.pop("STORAGE", None) or Storage(app.config.get("DATABASE_URL") or require_database_url())
     app.extensions["storage"] = storage
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    logger.info("startup component=web app_version=%s", app.config["APP_VERSION"])
 
     @app.template_filter("highlight_signal")
     def highlight_signal_filter(excerpt, signal):

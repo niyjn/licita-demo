@@ -93,16 +93,20 @@ docker compose up --build
 # http://localhost:8000
 ```
 
-O volume persistente pertence somente ao PostgreSQL. O cache local de PDFs é efêmero; com
-`S3_BUCKET_NAME` configurado, cada documento é gravado com key por run/compra e sua URL
-original, hash e key são rastreados na tabela `documentos`.
+O volume persistente pertence somente ao PostgreSQL. Cada web/worker mantém seu próprio
+cache local de PDFs, efêmero e não compartilhado; com `S3_BUCKET_NAME` configurado, cada
+documento é gravado com key por run/compra e sua URL original, hash e key são rastreados na
+tabela `documentos`.
 
 Executar somente a imagem inicia apenas o servidor web e é útil para diagnóstico, mas não
 consome a fila:
 
 ```bash
 docker build -t licita-demo .
-docker run --rm -p 8000:8000 licita-demo
+docker run --rm -p 8000:8000 \
+  -e DATABASE_URL=postgresql://user:password@db.example:5432/licita \
+  -e APP_VERSION=$(git rev-parse --short HEAD) \
+  licita-demo
 ```
 
 ### Worker CLI
@@ -131,17 +135,19 @@ tentativas HTTP e os limites de OCR. Os padrões locais são:
 DATABASE_URL=postgresql://licita:licita@localhost:5432/licita
 DB_POOL_MIN=1
 DB_POOL_MAX=5
+APP_VERSION=dev
 PDF_DIR=output/pdfs
 ```
 
-`DATABASE_URL` é obrigatória; não existe fallback SQLite. `S3_BUCKET_NAME` e `AWS_REGION`
+`DATABASE_URL` é obrigatória; não existe fallback SQLite. `APP_VERSION` identifica a imagem
+nos logs de startup de web e worker. `S3_BUCKET_NAME` e `AWS_REGION`
 mantêm compatibilidade com as task definitions existentes; `S3_BUCKET` e `S3_REGION` são
 aliases locais opcionais.
 
 ### Operação ECS/RDS
 
 Não execute migrations no startup do web ou worker. Para cada deploy, publique uma imagem
-imutável (tag pelo SHA do commit), tire um snapshot do RDS e execute uma task one-off com
+imutável (tag pelo SHA do commit e `APP_VERSION` igual ao SHA), tire um snapshot do RDS e execute uma task one-off com
 `alembic upgrade head`; só depois atualize o serviço web e os workers. O ALB deve consultar
 `/readyz` (retorna 503 até banco e revision Alembic estarem prontos); `/healthz` é somente
 liveness. Inicie com um worker, valide uma run pequena, então escale. Logs de startup devem

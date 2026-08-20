@@ -21,6 +21,7 @@ services:
     command: ["alembic", "upgrade", "head"]
     environment: &app_environment
       DATABASE_URL: postgresql://licita:licita@postgres:5432/licita
+      APP_VERSION: ${APP_VERSION:-dev}
       PDF_DIR: /app/output/pdfs
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
