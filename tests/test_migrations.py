@@ -68,6 +68,17 @@ def test_upgrade_adota_schema_postgresql_legado_e_preserva_dados(monkeypatch):
                 assert cursor.fetchone()[0] == "legacy-run"
                 cursor.execute("SELECT nome FROM perfis_busca WHERE nome = 'Legado'")
                 assert cursor.fetchone()[0] == "Legado"
+                cursor.execute("SELECT owner_id FROM runs WHERE id = 'legacy-run'")
+                assert cursor.fetchone()[0] is None
+                cursor.execute("SELECT owner_id FROM perfis_busca WHERE nome = 'Legado'")
+                assert cursor.fetchone()[0] is None
+                cursor.execute("SELECT to_regclass('anonymous_identities')")
+                assert cursor.fetchone()[0] == "anonymous_identities"
+                cursor.execute(
+                    """SELECT 1 FROM pg_constraint WHERE conrelid = 'perfis_busca'::regclass
+                       AND conname = 'perfis_busca_nome_key'"""
+                )
+                assert cursor.fetchone() is None
                 cursor.execute(
                     """SELECT column_name, data_type FROM information_schema.columns
                     WHERE table_name = 'runs' AND column_name IN ('created_at', 'started_at', 'heartbeat_at')"""

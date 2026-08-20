@@ -1,5 +1,8 @@
+import re
+
 from app import _titulo_limpo, create_app
 from pncp_query.application.analysis_executor import AnalysisExecutor
+from pncp_query.services.anonymous_identity import token_hash
 from pncp_query.worker import run_once
 
 
@@ -10,6 +13,27 @@ def wait_status(client, run_id, expected):
         if response.json["status"] == expected:
             return response.json
     raise AssertionError(f"status {expected} nao observado")
+
+
+def csrf(client):
+    page = client.get("/").get_data(as_text=True)
+    return re.search(r'window.csrfToken = "([^"]+)"', page).group(1)
+
+
+def owner_id(storage, client):
+    csrf(client)
+    cookie = client.get_cookie("licita_anon")
+    return str(storage.obter_identidade_por_hash(token_hash(cookie.value))["id"])
+
+
+def post(client, path, **kwargs):
+    headers = {**kwargs.pop("headers", {}), "X-CSRF-Token": csrf(client)}
+    return client.post(path, headers=headers, **kwargs)
+
+
+def delete(client, path, **kwargs):
+    headers = {**kwargs.pop("headers", {}), "X-CSRF-Token": csrf(client)}
+    return client.delete(path, headers=headers, **kwargs)
 
 
 def test_index_renderiza_frontend_com_design_system(storage):
@@ -72,7 +96,7 @@ def test_post_analises_cria_run_queued_e_worker_a_conclui_no_postgresql(storage)
     app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
 
-    response = client.post("/analises", json={"area": "TI", "uf": "SP", "limite": 1})
+    response = post(client, "/analises", json={"area": "TI", "uf": "SP", "limite": 1})
 
     assert response.status_code == 202
     run_id = response.json["run_id"]
@@ -90,7 +114,7 @@ def test_post_analises_grava_error_quando_worker_falha(storage):
     app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
 
-    response = client.post("/analises", json={"area": "TI", "uf": "SP", "limite": 1})
+    response = post(client, "/analises", json={"area": "TI", "uf": "SP", "limite": 1})
 
     assert response.status_code == 202
     run_once(storage, AnalysisExecutor(storage, fake_analysis), "test-worker")
@@ -118,7 +142,7 @@ def test_post_analises_livre_normaliza_e_repassa_termos(storage):
     app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
 
-    response = client.post(
+    response = post(
         "/analises",
         json={"modo": "livre", "termos": " firewall,\nFirewall, data center, x ", "uf": "SP", "limite": 1},
     )
@@ -133,8 +157,8 @@ def test_post_analises_livre_rejeita_vazio_e_mais_de_doze_termos(storage):
     app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
 
-    vazio = client.post("/analises", json={"modo": "livre", "termos": "x, ,"})
-    excesso = client.post(
+    vazio = post(client, "/analises", json={"modo": "livre", "termos": "x, ,"})
+    excesso = post(
         "/analises",
         json={"modo": "livre", "termos": ",".join(f"termo-{indice}" for indice in range(13))},
     )
@@ -145,10 +169,11 @@ def test_post_analises_livre_rejeita_vazio_e_mais_de_doze_termos(storage):
 
 
 def test_post_analises_permite_mais_de_uma_run_queued(storage):
-    storage.criar_run("run-ativa")
     app = create_app({"TESTING": True, "STORAGE": storage})
+    first, second = app.test_client(), app.test_client()
+    storage.criar_run("run-ativa", owner_id=owner_id(storage, first))
 
-    response = app.test_client().post("/analises", json={"area": "TI"})
+    response = post(second, "/analises", json={"area": "TI"})
 
     assert response.status_code == 202
 
@@ -163,15 +188,16 @@ def test_status_retorna_404_para_run_inexistente(storage):
 
 
 def test_historico_lista_runs_e_exclusao_recusa_run_ativa(storage):
-    storage.criar_run("run-final", params_json='{"modo":"livre","termos":["firewall"],"uf":"SP"}')
-    storage.atualizar_run("run-final", status="done")
-    storage.criar_run("run-ativa", params_json='{"area":"TI","uf":"SP"}')
     app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
+    owner = owner_id(storage, client)
+    storage.criar_run("run-final", params_json='{"modo":"livre","termos":["firewall"],"uf":"SP"}', owner_id=owner)
+    storage.atualizar_run("run-final", status="done")
+    storage.criar_run("run-ativa", params_json='{"area":"TI","uf":"SP"}', owner_id=owner)
 
     historico = client.get("/runs")
-    exclusao_ativa = client.post("/analises/run-ativa/excluir")
-    exclusao_final = client.post("/analises/run-final/excluir")
+    exclusao_ativa = post(client, "/analises/run-ativa/excluir")
+    exclusao_final = post(client, "/analises/run-final/excluir")
 
     assert historico.status_code == 200
     assert b"firewall" in historico.data
@@ -185,10 +211,10 @@ def test_crud_perfis_pelas_rotas(storage):
     app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
 
-    criado = client.post("/perfis", json={"nome": "Infra", "termos": "firewall, data center"})
-    duplicado = client.post("/perfis", json={"nome": "Infra", "termos": "servidor"})
+    criado = post(client, "/perfis", json={"nome": "Infra", "termos": "firewall, data center"})
+    duplicado = post(client, "/perfis", json={"nome": "Infra", "termos": "servidor"})
     listado = client.get("/perfis")
-    excluido = client.delete(f"/perfis/{criado.json['id']}")
+    excluido = delete(client, f"/perfis/{criado.json['id']}")
 
     assert criado.status_code == 201
     assert criado.json["termos"] == ["firewall", "data center"]
@@ -198,7 +224,9 @@ def test_crud_perfis_pelas_rotas(storage):
 
 
 def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(storage):
-    storage.criar_run("run-1")
+    app = create_app({"TESTING": True, "STORAGE": storage})
+    client = app.test_client()
+    storage.criar_run("run-1", owner_id=owner_id(storage, client))
     contrato_final = storage.salvar_contrato(
         {
             "run_id": "run-1",
@@ -264,9 +292,7 @@ def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(storage):
             }
         ],
     )
-    app = create_app({"TESTING": True, "STORAGE": storage})
-
-    response = app.test_client().get("/")
+    response = client.get("/")
 
     assert response.status_code == 200
     assert "Funil reconciliável".encode() in response.data
@@ -282,7 +308,9 @@ def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(storage):
 
 
 def test_endpoint_cnpjs_filtra_por_disposition(storage):
-    storage.criar_run("run-1")
+    app = create_app({"TESTING": True, "STORAGE": storage})
+    client = app.test_client()
+    storage.criar_run("run-1", owner_id=owner_id(storage, client))
     contrato_id = storage.salvar_contrato(
         {
             "run_id": "run-1",
@@ -322,9 +350,7 @@ def test_endpoint_cnpjs_filtra_por_disposition(storage):
             }
         ],
     )
-    app = create_app({"TESTING": True, "STORAGE": storage})
-
-    response = app.test_client().get("/analises/run-1/cnpjs?disposition=perdedor_final")
+    response = client.get("/analises/run-1/cnpjs?disposition=perdedor_final")
 
     assert response.status_code == 200
     assert [item["cnpj"] for item in response.json["cnpjs"]] == ["11444777000161"]
