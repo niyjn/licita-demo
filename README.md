@@ -126,6 +126,26 @@ Workers podem escalar horizontalmente. Ao iniciar ou manter um worker ativo, uma
 sem heartbeat por mais de uma hora é marcada como erro; ela não é retentada nem retomada
 automaticamente. Runs `queued` permanecem persistidas até que um worker esteja disponível.
 
+### Deploy AWS ECS Fargate & CloudFront (Produção / MVP)
+
+Para rodar a aplicação em produção na AWS com custos otimizados (sem utilizar o custo de um Application Load Balancer), adote a seguinte arquitetura de rede:
+
+1. **ECS Fargate (Computação)**:
+   - Crie duas Task Definitions (uma para `web` e outra para `worker`) utilizando a imagem Docker.
+   - **Comando do Worker**: Defina o comando de inicialização na Task Definition como `python,-m,pncp_query.worker`.
+   - **Importação de Módulos**: O `Dockerfile` já injeta `PYTHONPATH=/app` por padrão para garantir a correta importação de módulos no contêiner.
+
+2. **CloudFront (CDN & HTTPS)**:
+   - Aponte a **Origem** do CloudFront para o DNS reverso do IP público da tarefa do ECS Fargate (formato `ec2-XX-XX-XX-XX.[region].compute.amazonaws.com`).
+   - Configure a porta de origem como `8000` e o protocolo de comunicação como **`HTTP Only`** (o Gunicorn executa em HTTP limpo).
+   - **Origin Request Policy**: Altere no Behavior da distribuição para **`AllViewerExceptHostHeader`**. Isso evita que o roteamento de borda da AWS descarte as requisições por incompatibilidade do cabeçalho `Host`.
+   - **Desativação de IPv6**: Se os contêineres rodarem apenas em IPv4, desative a opção `IPv6` nas configurações gerais da distribuição CloudFront para evitar erros de Timeout 504 no roteamento.
+
+3. **Security Groups (Firewall)**:
+   - **Porta 8000**: Liberada para `0.0.0.0/0` (Anywhere-IPv4) permitindo o tráfego do CloudFront.
+   - **ICMP (MTU Path Discovery)**: Adicione uma regra de entrada para `All ICMP - IPv4` vinda de `0.0.0.0/0` no Security Group dos contêineres para evitar que pacotes grandes do CloudFront sejam bloqueados por incompatibilidade de fragmentação de rede.
+   - **Porta 5432 (PostgreSQL)**: Trancada estritamente para o IP de desenvolvimento e para o bloco de rede interna da VPC (ex: `172.31.0.0/16`) permitindo a comunicação segura das tarefas Fargate com o banco RDS.
+
 ### Configuração
 
 As variáveis de ambiente documentadas em `.env.example` controlam o banco, os PDFs, as
