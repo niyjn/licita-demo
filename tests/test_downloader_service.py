@@ -67,6 +67,29 @@ def test_baixar_usa_arquivo_temporario_e_renomeia_no_sucesso(tmp_path):
     assert not list(tmp_path.glob("*.tmp"))
 
 
+def test_baixar_s3_usa_key_por_run_e_compra_e_retorna_rastreabilidade(tmp_path, monkeypatch):
+    import pncp_query.services.downloader_service as downloader_module
+
+    class FakeS3:
+        def __init__(self):
+            self.calls = []
+
+        def put_object(self, **kwargs):
+            self.calls.append(kwargs)
+
+    service = DownloaderService()
+    service._get = lambda url, timeout=120: FakeResponse(b"%PDF-1.7\npdf", headers={"content-type": "application/pdf"})
+    service.s3_client = FakeS3()
+    monkeypatch.setattr(downloader_module, "S3_BUCKET_NAME", "documents")
+    arquivo = ArquivoPNCP("Ata", "https://example.test/file.pdf", tmp_path / "arquivo.pdf", sequencial="9")
+
+    metadata = service.baixar(arquivo, run_id="run-123", compra=("11222333000181", "2026", "1"))
+
+    assert metadata["source_url"] == arquivo.url
+    assert metadata["s3_key"] == "runs/run-123/compras/11222333000181/2026/1/9/arquivo.pdf"
+    assert service.s3_client.calls[0]["Key"] == metadata["s3_key"]
+
+
 def test_baixar_remove_temporario_quando_falha(tmp_path):
     service = DownloaderService()
 

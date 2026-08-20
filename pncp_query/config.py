@@ -52,11 +52,12 @@ AWS_REGION = os.getenv("AWS_REGION") or os.getenv("S3_REGION") or "us-east-1"
 
 def require_database_url():
     """Return the configured PostgreSQL DSN or fail without disclosing it."""
-    if not DATABASE_URL:
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
         raise RuntimeError("DATABASE_URL é obrigatória; configure uma URL PostgreSQL antes de iniciar o serviço.")
-    if not DATABASE_URL.startswith(("postgresql://", "postgres://")):
+    if not database_url.startswith(("postgresql://", "postgres://")):
         raise RuntimeError("DATABASE_URL deve apontar para PostgreSQL.")
-    return DATABASE_URL
+    return database_url
 
 HTTP_MAX_RETRIES = _env_int("HTTP_MAX_RETRIES", 5)
 HTTP_BACKOFF_BASE_SECONDS = _env_float("HTTP_BACKOFF_BASE_SECONDS", 2.0)

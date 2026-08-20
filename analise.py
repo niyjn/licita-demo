@@ -466,8 +466,13 @@ def _processar_documentos(
     documentos_processados = documentos_processados if documentos_processados is not None else []
     for arquivo in arquivos:
         try:
-            documento = downloader.baixar(arquivo, run_id=run_id, compra=compra)
-            if documento:
+            try:
+                documento = downloader.baixar(arquivo, run_id=run_id, compra=compra)
+            except TypeError as exc:
+                if "unexpected keyword" not in str(exc):
+                    raise
+                documento = downloader.baixar(arquivo)
+            if isinstance(documento, dict):
                 documentos_processados.append(documento)
             if not arquivo.destino.exists():
                 metricas["atas_falhas"] += 1

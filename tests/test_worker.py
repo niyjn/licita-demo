@@ -21,13 +21,14 @@ def params(**overrides):
     return json.dumps(values)
 
 
-def test_claim_persiste_e_apenas_um_worker_reivindica_concorrente(tmp_path):
-    db_path = tmp_path / "queue.db"
-    Storage(db_path).criar_run("old", params())
+def test_claim_persiste_e_apenas_um_worker_reivindica_concorrente(storage):
+    storage.criar_run("old", params())
     claimed = []
 
     def claim(name):
-        run = Storage(db_path).claim_next_run(name)
+        other = Storage(storage.database_url)
+        run = other.claim_next_run(name)
+        other.close()
         if run:
             claimed.append(run)
 
@@ -41,8 +42,31 @@ def test_claim_persiste_e_apenas_um_worker_reivindica_concorrente(tmp_path):
     assert claimed[0]["status"] == "running" and claimed[0]["attempt_count"] == 1
 
 
-def test_executor_sucesso_progresso_e_erro(tmp_path):
-    storage = Storage(tmp_path / "queue.db")
+def test_tres_workers_reivindicam_tres_runs_diferentes(storage):
+    for run_id in ("first", "second", "third"):
+        storage.criar_run(run_id, params())
+    claimed = []
+
+    def claim(worker):
+        instance = Storage(storage.database_url)
+        try:
+            run = instance.claim_next_run(worker)
+            if run:
+                claimed.append(run)
+        finally:
+            instance.close()
+
+    threads = [threading.Thread(target=claim, args=(f"worker-{index}",)) for index in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert {run["id"] for run in claimed} == {"first", "second", "third"}
+    assert {run["worker_id"] for run in claimed} == {"worker-0", "worker-1", "worker-2"}
+
+
+def test_executor_sucesso_progresso_e_erro(storage):
     storage.criar_run("success", params())
     run = storage.claim_next_run("worker")
 
@@ -62,8 +86,7 @@ def test_executor_sucesso_progresso_e_erro(tmp_path):
     assert storage.obter_run("error")["error"] == "boom"
 
 
-def test_worker_once_processa_run_e_payload_invalido_vira_erro(tmp_path):
-    storage = Storage(tmp_path / "queue.db")
+def test_worker_once_processa_run_e_payload_invalido_vira_erro(storage):
     storage.criar_run("valid", params())
     called = []
     executor = AnalysisExecutor(storage, lambda *args, **kwargs: called.append(True))
@@ -79,8 +102,7 @@ def test_worker_once_processa_run_e_payload_invalido_vira_erro(tmp_path):
     assert "inválidos" in invalid["error"]
 
 
-def test_worker_main_once_processa_uma_run(tmp_path):
-    storage = Storage(tmp_path / "queue.db")
+def test_worker_main_once_processa_uma_run(storage):
     storage.criar_run("queued", params())
     called = []
     executor = AnalysisExecutor(storage, lambda *args, **kwargs: called.append(kwargs["run_id"]))
@@ -106,11 +128,10 @@ def test_analysis_command_rejeita_parametros_fora_das_regras(overrides):
         AnalysisCommand.from_run(run)
 
 
-def test_python_module_worker_once_reivindica_fila_persistida(tmp_path):
-    db_path = tmp_path / "queue.db"
-    Storage(db_path).criar_run("invalid", "not-json")
+def test_python_module_worker_once_reivindica_fila_persistida(storage):
+    storage.criar_run("invalid", "not-json")
     env = os.environ.copy()
-    env["DB_PATH"] = str(db_path)
+    env["DATABASE_URL"] = storage.database_url
 
     result = subprocess.run(
         [sys.executable, "-m", "pncp_query.worker", "--once"],
@@ -121,16 +142,15 @@ def test_python_module_worker_once_reivindica_fila_persistida(tmp_path):
     )
 
     assert result.returncode == 0, result.stderr
-    run = Storage(db_path).obter_run("invalid")
+    run = storage.obter_run("invalid")
     assert run["status"] == "error"
     assert run["attempt_count"] == 1
 
 
-def test_stale_running_vira_erro_sem_voltar_para_fila(tmp_path):
-    storage = Storage(tmp_path / "queue.db")
+def test_stale_running_vira_erro_sem_voltar_para_fila(storage):
     storage.criar_run("stale", params())
     storage.claim_next_run("worker")
-    with storage.connect() as conn:
-        conn.execute("UPDATE runs SET heartbeat_at = '2000-01-01T00:00:00' WHERE id = 'stale'")
+    with storage.connect() as cursor:
+        cursor.execute("UPDATE runs SET heartbeat_at = now() - interval '2 hours' WHERE id = %s", ("stale",))
     storage.limpar_runs_travadas(timeout_segundos=1)
     assert storage.obter_run("stale")["status"] == "error"

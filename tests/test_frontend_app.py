@@ -1,6 +1,5 @@
 from app import _titulo_limpo, create_app
 from pncp_query.application.analysis_executor import AnalysisExecutor
-from pncp_query.services.storage import Storage
 from pncp_query.worker import run_once
 
 
@@ -13,8 +12,8 @@ def wait_status(client, run_id, expected):
     raise AssertionError(f"status {expected} nao observado")
 
 
-def test_index_renderiza_frontend_com_design_system(tmp_path):
-    app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db"})
+def test_index_renderiza_frontend_com_design_system(storage):
+    app = create_app({"TESTING": True, "STORAGE": storage})
 
     response = app.test_client().get("/")
 
@@ -27,8 +26,8 @@ def test_index_renderiza_frontend_com_design_system(tmp_path):
     assert b"analysis-layout" in response.data
 
 
-def test_healthz_retorna_ok():
-    app = create_app({"TESTING": True})
+def test_healthz_retorna_ok(storage):
+    app = create_app({"TESTING": True, "STORAGE": storage})
 
     response = app.test_client().get("/healthz")
 
@@ -36,12 +35,11 @@ def test_healthz_retorna_ok():
     assert response.json == {"status": "ok"}
 
 
-def test_post_analises_cria_run_queued_e_worker_a_conclui_no_sqlite(tmp_path):
-    def fake_analysis(area, data_inicial, data_final, uf, limite, db_path, run_id=None, progress=None):
+def test_post_analises_cria_run_queued_e_worker_a_conclui_no_postgresql(storage):
+    def fake_analysis(area, data_inicial, data_final, uf, limite, storage, run_id=None, progress=None):
         progress({"mensagem": "metade", "atual": 1, "total": 2})
 
-    db_path = tmp_path / "analise.db"
-    app = create_app({"TESTING": True, "DB_PATH": db_path})
+    app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
 
     response = client.post("/analises", json={"area": "TI", "uf": "SP", "limite": 1})
@@ -49,32 +47,29 @@ def test_post_analises_cria_run_queued_e_worker_a_conclui_no_sqlite(tmp_path):
     assert response.status_code == 202
     run_id = response.json["run_id"]
     assert client.get(f"/analises/{run_id}/status").json["status"] == "queued"
-    storage = Storage(db_path)
     run_once(storage, AnalysisExecutor(storage, fake_analysis), "test-worker")
     status = wait_status(client, run_id, "done")
     assert status["progress"] == 100
     assert status["error"] == ""
 
 
-def test_post_analises_grava_error_quando_worker_falha(tmp_path):
-    def fake_analysis(area, data_inicial, data_final, uf, limite, db_path, run_id=None, progress=None):
+def test_post_analises_grava_error_quando_worker_falha(storage):
+    def fake_analysis(area, data_inicial, data_final, uf, limite, storage, run_id=None, progress=None):
         raise RuntimeError("falha controlada")
 
-    db_path = tmp_path / "analise.db"
-    app = create_app({"TESTING": True, "DB_PATH": db_path})
+    app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
 
     response = client.post("/analises", json={"area": "TI", "uf": "SP", "limite": 1})
 
     assert response.status_code == 202
-    storage = Storage(db_path)
     run_once(storage, AnalysisExecutor(storage, fake_analysis), "test-worker")
     status = wait_status(client, response.json["run_id"], "error")
     assert status["progress"] == 100
     assert status["error"] == "falha controlada"
 
 
-def test_post_analises_livre_normaliza_e_repassa_termos(tmp_path):
+def test_post_analises_livre_normaliza_e_repassa_termos(storage):
     recebido = {}
 
     def fake_analysis(
@@ -83,15 +78,14 @@ def test_post_analises_livre_normaliza_e_repassa_termos(tmp_path):
         data_final,
         uf,
         limite,
-        db_path,
+        storage,
         run_id=None,
         progress=None,
         termos=None,
     ):
         recebido.update(area=area, termos=termos)
 
-    db_path = tmp_path / "analise.db"
-    app = create_app({"TESTING": True, "DB_PATH": db_path})
+    app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
 
     response = client.post(
@@ -100,14 +94,13 @@ def test_post_analises_livre_normaliza_e_repassa_termos(tmp_path):
     )
 
     assert response.status_code == 202
-    storage = Storage(db_path)
     run_once(storage, AnalysisExecutor(storage, fake_analysis), "test-worker")
     wait_status(client, response.json["run_id"], "done")
     assert recebido == {"area": None, "termos": ["firewall", "data center"]}
 
 
-def test_post_analises_livre_rejeita_vazio_e_mais_de_doze_termos(tmp_path):
-    app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db"})
+def test_post_analises_livre_rejeita_vazio_e_mais_de_doze_termos(storage):
+    app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
 
     vazio = client.post("/analises", json={"modo": "livre", "termos": "x, ,"})
@@ -121,19 +114,17 @@ def test_post_analises_livre_rejeita_vazio_e_mais_de_doze_termos(tmp_path):
     assert "12 termos" in excesso.json["message"]
 
 
-def test_post_analises_rejeita_quando_ja_existe_run_ativa(tmp_path):
-    db_path = tmp_path / "analise.db"
-    Storage(db_path).criar_run("run-ativa")
-    app = create_app({"TESTING": True, "DB_PATH": db_path})
+def test_post_analises_permite_mais_de_uma_run_queued(storage):
+    storage.criar_run("run-ativa")
+    app = create_app({"TESTING": True, "STORAGE": storage})
 
     response = app.test_client().post("/analises", json={"area": "TI"})
 
-    assert response.status_code == 409
-    assert response.json["error"] == "analysis_in_progress"
+    assert response.status_code == 202
 
 
-def test_status_retorna_404_para_run_inexistente(tmp_path):
-    app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db"})
+def test_status_retorna_404_para_run_inexistente(storage):
+    app = create_app({"TESTING": True, "STORAGE": storage})
 
     response = app.test_client().get("/analises/run-inexistente/status")
 
@@ -141,13 +132,11 @@ def test_status_retorna_404_para_run_inexistente(tmp_path):
     assert response.json == {"error": "run_not_found"}
 
 
-def test_historico_lista_runs_e_exclusao_recusa_run_ativa(tmp_path):
-    db_path = tmp_path / "analise.db"
-    storage = Storage(db_path)
+def test_historico_lista_runs_e_exclusao_recusa_run_ativa(storage):
     storage.criar_run("run-final", params_json='{"modo":"livre","termos":["firewall"],"uf":"SP"}')
     storage.atualizar_run("run-final", status="done")
     storage.criar_run("run-ativa", params_json='{"area":"TI","uf":"SP"}')
-    app = create_app({"TESTING": True, "DB_PATH": db_path})
+    app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
 
     historico = client.get("/runs")
@@ -162,8 +151,8 @@ def test_historico_lista_runs_e_exclusao_recusa_run_ativa(tmp_path):
     assert storage.obter_run("run-final") is None
 
 
-def test_crud_perfis_pelas_rotas(tmp_path):
-    app = create_app({"TESTING": True, "DB_PATH": tmp_path / "analise.db"})
+def test_crud_perfis_pelas_rotas(storage):
+    app = create_app({"TESTING": True, "STORAGE": storage})
     client = app.test_client()
 
     criado = client.post("/perfis", json={"nome": "Infra", "termos": "firewall, data center"})
@@ -178,9 +167,7 @@ def test_crud_perfis_pelas_rotas(tmp_path):
     assert excluido.status_code == 204
 
 
-def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(tmp_path):
-    db_path = tmp_path / "analise.db"
-    storage = Storage(db_path)
+def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(storage):
     storage.criar_run("run-1")
     contrato_final = storage.salvar_contrato(
         {
@@ -247,7 +234,7 @@ def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(tmp_path):
             }
         ],
     )
-    app = create_app({"TESTING": True, "DB_PATH": db_path})
+    app = create_app({"TESTING": True, "STORAGE": storage})
 
     response = app.test_client().get("/")
 
@@ -264,9 +251,7 @@ def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(tmp_path):
     assert b"Software" in response.data
 
 
-def test_endpoint_cnpjs_filtra_por_disposition(tmp_path):
-    db_path = tmp_path / "analise.db"
-    storage = Storage(db_path)
+def test_endpoint_cnpjs_filtra_por_disposition(storage):
     storage.criar_run("run-1")
     contrato_id = storage.salvar_contrato(
         {
@@ -307,7 +292,7 @@ def test_endpoint_cnpjs_filtra_por_disposition(tmp_path):
             }
         ],
     )
-    app = create_app({"TESTING": True, "DB_PATH": db_path})
+    app = create_app({"TESTING": True, "STORAGE": storage})
 
     response = app.test_client().get("/analises/run-1/cnpjs?disposition=perdedor_final")
 
