@@ -36,32 +36,27 @@ def _env_float(nome, padrao):
 
 _carregar_env_local()
 
-# Try to write to resolved paths, fallback to home directory if not writable (e.g., Docker volume permission issues)
-_resolved_db_path = Path(os.getenv("DB_PATH", OUTPUT_DIR / "analise.db"))
-_resolved_pdf_dir = Path(os.getenv("PDF_DIR", OUTPUT_DIR / "pdfs"))
+PDF_DIR = Path(os.getenv("PDF_DIR", OUTPUT_DIR / "pdfs"))
 
-try:
-    _resolved_db_path.parent.mkdir(parents=True, exist_ok=True)
-    # Test if parent directory is writable
-    _test_file = _resolved_db_path.parent / ".write_test"
-    _test_file.touch()
-    _test_file.unlink()
+# PostgreSQL is deliberately the only database backend.  Do not add a local-file
+# fallback: web and worker must fail fast instead of silently using different data.
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+DB_POOL_MIN = _env_int("DB_POOL_MIN", 1)
+DB_POOL_MAX = _env_int("DB_POOL_MAX", 5)
 
-    # Test if the database file itself is writable if it exists
-    if _resolved_db_path.exists():
-        with open(_resolved_db_path, "a"):
-            pass
-except Exception:
-    # Fallback to user home directory (always writable by the running user)
-    _resolved_db_path = Path.home() / "analise.db"
-    _resolved_pdf_dir = Path.home() / "pdfs"
+# Keep the names already used by ECS task definitions.  The short aliases make
+# local configuration friendlier without changing production deployments.
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME") or os.getenv("S3_BUCKET")
+AWS_REGION = os.getenv("AWS_REGION") or os.getenv("S3_REGION") or "us-east-1"
 
-DB_PATH = _resolved_db_path
-PDF_DIR = _resolved_pdf_dir
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+def require_database_url():
+    """Return the configured PostgreSQL DSN or fail without disclosing it."""
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL é obrigatória; configure uma URL PostgreSQL antes de iniciar o serviço.")
+    if not DATABASE_URL.startswith(("postgresql://", "postgres://")):
+        raise RuntimeError("DATABASE_URL deve apontar para PostgreSQL.")
+    return DATABASE_URL
 
 HTTP_MAX_RETRIES = _env_int("HTTP_MAX_RETRIES", 5)
 HTTP_BACKOFF_BASE_SECONDS = _env_float("HTTP_BACKOFF_BASE_SECONDS", 2.0)
