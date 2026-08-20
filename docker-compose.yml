@@ -16,7 +16,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   migrate:
-    build: .
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     image: licita-demo:latest
     command: ["alembic", "upgrade", "head"]
     environment: &app_environment
@@ -31,7 +34,10 @@ services:
     restart: "no"
 
   web:
-    build: .
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     image: licita-demo:latest
     command: ["gunicorn", "-b", "0.0.0.0:8000", "--workers", "1", "--threads", "4", "app:app"]
     ports:
