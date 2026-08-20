@@ -13,7 +13,7 @@ CNPJ e nome — junto de um **relatório de qualidade reconciliável** dos dados
 1. **Busca** compras no PNCP por palavras-chave da área, período e UF (filtro `ufs` na API).
 2. **Vencedores** vêm da API estruturada de resultados do PNCP (CNPJ, razão social e valor homologado) — sem depender de PDF.
 3. **Demais participantes** só são confirmados quando um PDF apresenta contexto explícito de participação e o CNPJ não pertence ao vencedor nem ao órgão comprador.
-4. **Persiste** tudo em SQLite e exibe numa interface server-rendered (Flask + Jinja2).
+4. **Persiste** tudo em PostgreSQL e exibe numa interface server-rendered (Flask + Jinja2).
 
 As áreas de exemplo disponíveis são `TI`, `ENGENHARIA` e `SAUDE`, e o filtro cobre as 27 UFs.
 
@@ -52,9 +52,9 @@ contexto explícito no PDF, o CNPJ permanece inconclusivo e não entra no result
 
 - **Flask + Jinja2** — frontend server-rendered, estilizado pelo CSS em `design-system/`.
 - **Web e worker separados** — `POST /analises` apenas persiste uma run `queued`; o worker (`python -m pncp_query.worker`) a reivindica e executa. O front faz polling em `GET /analises/<run_id>/status`.
-- **Uma análise ativa por vez** — o SQLite impede atomicamente uma segunda run em estado `queued/running`; o claim usa uma transação SQLite para que dois workers não processem a mesma run.
+- **Fila concorrente** — várias runs podem permanecer `queued`; cada worker usa `FOR UPDATE SKIP LOCKED` em uma única transação para reivindicar uma run sem duplicação.
 - **Histórico e modelos** — runs ficam disponíveis em `/runs`; termos livres podem ser salvos como modelos reutilizáveis.
-- **SQLite** (WAL + `busy_timeout`) — sem servidor de banco; web e worker acessam o mesmo arquivo no mesmo host.
+- **PostgreSQL + Alembic** — web e worker usam a mesma `DATABASE_URL`; migrations são executadas separadamente do startup.
 - **Serviços** — busca PNCP, resultado estruturado, downloader de atas (download atômico), parser PDF/OCR, validação de CNPJ e enriquecimento por BrasilAPI.
 
 ## Rodando
@@ -67,6 +67,9 @@ pip install -r requirements-dev.txt
 
 # opcional: copie e ajuste as configurações locais
 cp .env.example .env
+
+# aplica schema (repita a cada atualização que contenha migrations)
+alembic upgrade head
 
 # terminal 1: servidor web
 flask --app app run --host 0.0.0.0 --port 8000
@@ -82,16 +85,17 @@ Para OCR de PDFs escaneados, instale o [Tesseract](https://github.com/tesseract-
 
 ### Docker
 
-O modo recomendado é o Docker Compose, pois ele inicia os dois processos e configura o
-volume compartilhado:
+O modo recomendado é o Docker Compose: ele inicia PostgreSQL, executa uma task de migration
+e só então inicia web e worker:
 
 ```bash
 docker compose up --build
 # http://localhost:8000
 ```
 
-O Compose inicia os serviços `web` e `worker` a partir da mesma imagem e compartilha o volume
-`/app/output`, que contém o banco SQLite e os PDFs.
+O volume persistente pertence somente ao PostgreSQL. O cache local de PDFs é efêmero; com
+`S3_BUCKET_NAME` configurado, cada documento é gravado com key por run/compra e sua URL
+original, hash e key são rastreados na tabela `documentos`.
 
 Executar somente a imagem inicia apenas o servidor web e é útil para diagnóstico, mas não
 consome a fila:
@@ -114,9 +118,8 @@ python -m pncp_query.worker
 python -m pncp_query.worker --poll-interval 5
 ```
 
-SQLite continua sendo uma solução single-host nesta etapa. Não escale workers horizontalmente
-sem revisar a operação do banco. Ao iniciar ou manter um worker ativo, uma run `running` sem
-heartbeat por mais de uma hora é marcada como erro; ela não é retentada nem retomada
+Workers podem escalar horizontalmente. Ao iniciar ou manter um worker ativo, uma run `running`
+sem heartbeat por mais de uma hora é marcada como erro; ela não é retentada nem retomada
 automaticamente. Runs `queued` permanecem persistidas até que um worker esteja disponível.
 
 ### Configuração
@@ -125,14 +128,29 @@ As variáveis de ambiente documentadas em `.env.example` controlam o banco, os P
 tentativas HTTP e os limites de OCR. Os padrões locais são:
 
 ```dotenv
-DB_PATH=output/analise.db
+DATABASE_URL=postgresql://licita:licita@localhost:5432/licita
+DB_POOL_MIN=1
+DB_POOL_MAX=5
 PDF_DIR=output/pdfs
 ```
+
+`DATABASE_URL` é obrigatória; não existe fallback SQLite. `S3_BUCKET_NAME` e `AWS_REGION`
+mantêm compatibilidade com as task definitions existentes; `S3_BUCKET` e `S3_REGION` são
+aliases locais opcionais.
+
+### Operação ECS/RDS
+
+Não execute migrations no startup do web ou worker. Para cada deploy, publique uma imagem
+imutável (tag pelo SHA do commit), tire um snapshot do RDS e execute uma task one-off com
+`alembic upgrade head`; só depois atualize o serviço web e os workers. O ALB deve consultar
+`/readyz` (retorna 503 até banco e revision Alembic estarem prontos); `/healthz` é somente
+liveness. Inicie com um worker, valide uma run pequena, então escale. Logs de startup devem
+identificar a imagem/revision sem imprimir a DSN.
 
 ## Testes e lint
 
 ```bash
-python -m pytest
+TEST_DATABASE_URL=postgresql://licita:licita@localhost:5432/licita python -m pytest
 ruff check .
 ```
 
@@ -143,4 +161,4 @@ ruff check .
 
 ## Stack
 
-Python 3.11 · Flask · Jinja2 · SQLite · requests · pdfplumber · pytesseract · pdf2image · python-dateutil
+Python 3.11 · Flask · Jinja2 · PostgreSQL · Alembic · requests · pdfplumber · pytesseract · pdf2image · python-dateutil
