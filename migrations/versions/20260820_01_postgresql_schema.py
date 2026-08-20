@@ -98,17 +98,17 @@ def upgrade():
         op.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}")
     op.execute("""
     DO $$
-    DECLARE column_name text;
+    DECLARE target_column text;
     BEGIN
-      FOREACH column_name IN ARRAY ARRAY['created_at', 'started_at', 'finished_at', 'heartbeat_at'] LOOP
+      FOREACH target_column IN ARRAY ARRAY['created_at', 'started_at', 'finished_at', 'heartbeat_at'] LOOP
         IF EXISTS (
           SELECT 1 FROM information_schema.columns AS columns_info
           WHERE columns_info.table_schema = current_schema() AND columns_info.table_name = 'runs'
-            AND columns_info.column_name = column_name AND columns_info.data_type IN ('text', 'character varying')
+            AND columns_info.column_name = target_column AND columns_info.data_type IN ('text', 'character varying')
         ) THEN
           EXECUTE format(
             'ALTER TABLE runs ALTER COLUMN %I TYPE timestamptz USING NULLIF(%I::text, '''')::timestamptz',
-            column_name, column_name
+            target_column, target_column
           );
         END IF;
       END LOOP;
