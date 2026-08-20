@@ -41,8 +41,11 @@ def test_csrf_active_run_and_worker_ownership(storage):
             storage.complete_claimed_run(command.run_id, worker_name)
 
     assert run_once(storage, Executor(), "worker")
+    assert run_once(storage, Executor(), "worker")
     assert storage.obter_run(first_run)
     assert storage.obter_run(second_run)
+    assert storage.obter_run(first_run)["status"] == "done"
+    assert storage.obter_run(second_run)["status"] == "done"
 
 
 def test_health_readiness_and_assets_do_not_issue_cookie(storage):
