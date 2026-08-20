@@ -38,11 +38,21 @@ _carregar_env_local()
 
 PDF_DIR = Path(os.getenv("PDF_DIR", OUTPUT_DIR / "pdfs"))
 
+
+def normalize_database_url(database_url):
+    """Normalize the Heroku-era scheme without decoding URL-encoded secrets."""
+    database_url = str(database_url or "").strip()
+    if database_url.startswith("postgres://"):
+        return "postgresql://" + database_url.removeprefix("postgres://")
+    return database_url
+
+
 # PostgreSQL is deliberately the only database backend.  Do not add a local-file
 # fallback: web and worker must fail fast instead of silently using different data.
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+DATABASE_URL = normalize_database_url(os.getenv("DATABASE_URL"))
 DB_POOL_MIN = _env_int("DB_POOL_MIN", 1)
 DB_POOL_MAX = _env_int("DB_POOL_MAX", 5)
+APP_VERSION = os.getenv("APP_VERSION", "dev").strip() or "dev"
 
 # Keep the names already used by ECS task definitions.  The short aliases make
 # local configuration friendlier without changing production deployments.
@@ -52,7 +62,7 @@ AWS_REGION = os.getenv("AWS_REGION") or os.getenv("S3_REGION") or "us-east-1"
 
 def require_database_url():
     """Return the configured PostgreSQL DSN or fail without disclosing it."""
-    database_url = os.getenv("DATABASE_URL", "").strip()
+    database_url = normalize_database_url(os.getenv("DATABASE_URL"))
     if not database_url:
         raise RuntimeError("DATABASE_URL é obrigatória; configure uma URL PostgreSQL antes de iniciar o serviço.")
     if not database_url.startswith(("postgresql://", "postgres://")):
