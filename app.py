@@ -13,6 +13,7 @@ from psycopg2 import IntegrityError
 
 from pncp_query.config import (
     ANON_COOKIE_DAYS,
+    ANON_COOKIE_REFRESH_HOURS,
     ANON_COOKIE_SECURE,
     APP_VERSION,
     AREAS,
@@ -102,6 +103,7 @@ def create_app(config=None):
         DATABASE_URL=DATABASE_URL,
         APP_VERSION=APP_VERSION,
         ANON_COOKIE_DAYS=ANON_COOKIE_DAYS,
+        ANON_COOKIE_REFRESH_HOURS=ANON_COOKIE_REFRESH_HOURS,
         ANON_COOKIE_SECURE=ANON_COOKIE_SECURE,
         CSRF_SECRET=CSRF_SECRET,
     )
@@ -132,15 +134,18 @@ def create_app(config=None):
     def anonymous_identity():
         if request.endpoint in {"healthz", "readyz", "static", "favicon"}:
             return None
-        owner_id, cookie, is_new = resolve_identity(
-            storage, request.cookies.get(COOKIE_NAME), app.config["ANON_COOKIE_DAYS"]
+        owner_id, cookie, should_set_cookie = resolve_identity(
+            storage,
+            request.cookies.get(COOKIE_NAME),
+            app.config["ANON_COOKIE_DAYS"],
+            app.config["ANON_COOKIE_REFRESH_HOURS"],
         )
-        g.owner_id, g.anon_cookie, g.anon_cookie_new = owner_id, cookie, is_new
+        g.owner_id, g.anon_cookie, g.should_set_anon_cookie = owner_id, cookie, should_set_cookie
         return None
 
     @app.after_request
     def persist_anonymous_cookie(response):
-        if getattr(g, "anon_cookie_new", False):
+        if getattr(g, "should_set_anon_cookie", False):
             response.set_cookie(
                 COOKIE_NAME,
                 g.anon_cookie,

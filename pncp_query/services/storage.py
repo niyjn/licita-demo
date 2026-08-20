@@ -82,7 +82,19 @@ class Storage:
             # expiry comparisons; public run/profile APIs remain JSON-safe.
             return dict(row) if row else None
 
+    def renovar_identidade_se_necessario(self, owner_id, expires_at, refresh_hours):
+        """Renew at most once per refresh window; returns whether this request won."""
+        with self.connect() as cursor:
+            cursor.execute(
+                """UPDATE anonymous_identities SET last_seen_at = now(), expires_at = %s
+                   WHERE id = %s AND last_seen_at < now() - (%s * interval '1 hour')
+                   RETURNING id""",
+                (expires_at, owner_id, int(refresh_hours)),
+            )
+            return cursor.fetchone() is not None
+
     def tocar_identidade(self, owner_id, expires_at):
+        """Compatibility helper for administrative/tests that intentionally force expiry."""
         with self.connect() as cursor:
             cursor.execute(
                 "UPDATE anonymous_identities SET last_seen_at = now(), expires_at = %s WHERE id = %s",

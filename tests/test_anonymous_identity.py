@@ -77,6 +77,30 @@ def test_invalid_or_expired_cookie_rotates_identity(storage):
     assert _owner(storage, client)["id"] != rotated["id"]
 
 
+def test_valid_identity_refreshes_only_after_the_window(storage):
+    app = create_app({"TESTING": True, "STORAGE": storage, "ANON_COOKIE_SECURE": False})
+    client = app.test_client()
+    _csrf(client)
+    before = _owner(storage, client)
+
+    immediate = client.get("/")
+    unchanged = _owner(storage, client)
+    assert "licita_anon" not in immediate.headers.get("Set-Cookie", "")
+    assert unchanged["last_seen_at"] == before["last_seen_at"]
+    assert unchanged["expires_at"] == before["expires_at"]
+
+    with storage.connect() as cursor:
+        cursor.execute(
+            "UPDATE anonymous_identities SET last_seen_at = now() - interval '25 hours' WHERE id = %s",
+            (before["id"],),
+        )
+    renewed = client.get("/")
+    after = _owner(storage, client)
+    assert "licita_anon" in renewed.headers["Set-Cookie"]
+    assert after["last_seen_at"] > before["last_seen_at"]
+    assert after["expires_at"] > before["expires_at"]
+
+
 def test_production_cookie_is_secure(storage):
     app = create_app({"STORAGE": storage, "CSRF_SECRET": "test-secret", "ANON_COOKIE_SECURE": True})
     response = app.test_client().get("/")

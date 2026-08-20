@@ -54,6 +54,7 @@ DB_POOL_MIN = _env_int("DB_POOL_MIN", 1)
 DB_POOL_MAX = _env_int("DB_POOL_MAX", 5)
 APP_VERSION = os.getenv("APP_VERSION", "dev").strip() or "dev"
 ANON_COOKIE_DAYS = _env_int("ANON_COOKIE_DAYS", 180)
+ANON_COOKIE_REFRESH_HOURS = _env_int("ANON_COOKIE_REFRESH_HOURS", 24)
 ANON_COOKIE_SECURE = os.getenv("ANON_COOKIE_SECURE", "true").strip().lower() not in {"0", "false", "no"}
 CSRF_SECRET = os.getenv("CSRF_SECRET", "").strip()
 
