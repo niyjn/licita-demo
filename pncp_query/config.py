@@ -59,6 +59,7 @@ def require_database_url():
         raise RuntimeError("DATABASE_URL deve apontar para PostgreSQL.")
     return database_url
 
+
 HTTP_MAX_RETRIES = _env_int("HTTP_MAX_RETRIES", 5)
 HTTP_BACKOFF_BASE_SECONDS = _env_float("HTTP_BACKOFF_BASE_SECONDS", 2.0)
 HTTP_BACKOFF_MAX_SECONDS = _env_float("HTTP_BACKOFF_MAX_SECONDS", 120.0)
@@ -195,6 +196,7 @@ PALAVRAS_ARQUIVO_EXCLUIR = [
 
 PDF_MAX_BYTES = _env_int("PDF_MAX_BYTES", 15 * 1024 * 1024)
 PDF_FALLBACK_MAX_FILES = _env_int("PDF_FALLBACK_MAX_FILES", 3)
+
 
 def janela_padrao():
     hoje = datetime.now()

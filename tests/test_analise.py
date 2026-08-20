@@ -2,7 +2,6 @@ from pathlib import Path
 
 import analise
 from pncp_query.models import ArquivoPNCP, EvidenciaCNPJ, Licitacao, LoteArquivosPNCP, ResultadoPDF
-from pncp_query.services.storage import Storage
 
 
 class FakeSearch:
@@ -41,9 +40,7 @@ class FakeDownloader:
     def listar_arquivos_candidatos(self, linha, pdf_dir, chaves):
         destino = Path(pdf_dir) / "ata.pdf"
         destino.parent.mkdir(parents=True, exist_ok=True)
-        return LoteArquivosPNCP(
-            prioritarios=[ArquivoPNCP("Ata", "https://example.test/ata.pdf", destino)]
-        )
+        return LoteArquivosPNCP(prioritarios=[ArquivoPNCP("Ata", "https://example.test/ata.pdf", destino)])
 
     def baixar(self, arquivo):
         arquivo.destino.write_bytes(b"pdf")
@@ -78,7 +75,7 @@ class FakeEnrichment:
             "cnpj": cnpj,
             "razao_social": nome,
             "nome_fantasia": nome,
-            "situacao_cadastral": "ATIVA" if nome else ""
+            "situacao_cadastral": "ATIVA" if nome else "",
         }
 
 
@@ -241,9 +238,7 @@ def test_fallback_so_e_processado_quando_prioritario_nao_confirma_perdedor(monke
             pdf_dir = Path(pdf_dir)
             pdf_dir.mkdir(parents=True, exist_ok=True)
             return LoteArquivosPNCP(
-                prioritarios=[
-                    ArquivoPNCP("Ata", "https://example.test/ata.pdf", pdf_dir / "priority.pdf")
-                ],
+                prioritarios=[ArquivoPNCP("Ata", "https://example.test/ata.pdf", pdf_dir / "priority.pdf")],
                 fallback=[
                     ArquivoPNCP(
                         "Documento complementar",
@@ -323,9 +318,7 @@ def test_fallback_nao_e_processado_quando_prioritario_confirma_perdedor(monkeypa
             pdf_dir = Path(pdf_dir)
             pdf_dir.mkdir(parents=True, exist_ok=True)
             return LoteArquivosPNCP(
-                prioritarios=[
-                    ArquivoPNCP("Ata", "https://example.test/ata.pdf", pdf_dir / "priority.pdf")
-                ],
+                prioritarios=[ArquivoPNCP("Ata", "https://example.test/ata.pdf", pdf_dir / "priority.pdf")],
                 fallback=[
                     ArquivoPNCP(
                         "Anexo",
@@ -354,7 +347,7 @@ def test_motivo_descarte_identifica_dispensa_e_inexigibilidade():
         "modalidade_licitacao_nome": "Pregão Eletrônico",
         "title": "Dispensa de licitação para compra emergencial",
         "description": "Aquisição de insumos",
-        "situacao_nome": "Homologada"
+        "situacao_nome": "Homologada",
     }
     assert analise._motivo_descarte(linha_dispensa) == "contratacao_direta_ou_exclusividade:dispensa"
 
@@ -363,7 +356,7 @@ def test_motivo_descarte_identifica_dispensa_e_inexigibilidade():
         "modalidade_licitacao_nome": "Inexigibilidade",
         "title": "Compra de software proprietário",
         "description": "Contratação direta",
-        "situacao_nome": "Homologada"
+        "situacao_nome": "Homologada",
     }
     assert analise._motivo_descarte(linha_inexigibilidade) == "contratacao_direta_ou_exclusividade:inexigibilidade"
 
@@ -372,6 +365,6 @@ def test_motivo_descarte_identifica_dispensa_e_inexigibilidade():
         "modalidade_licitacao_nome": "Concorrência",
         "title": "Aquisição de computadores",
         "description": "Ampla concorrência para TI",
-        "situacao_nome": "Homologada"
+        "situacao_nome": "Homologada",
     }
     assert analise._motivo_descarte(linha_valida) == ""

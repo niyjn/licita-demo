@@ -6,8 +6,8 @@ its own database and Alembic upgrade; no test is skipped when PostgreSQL is off.
 """
 
 import os
-from uuid import uuid4
 from urllib.parse import urlsplit, urlunsplit
+from uuid import uuid4
 
 import psycopg2
 import pytest

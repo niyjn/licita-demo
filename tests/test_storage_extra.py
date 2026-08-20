@@ -1,4 +1,3 @@
-from pncp_query.services.storage import Storage
 
 
 def test_storage_persiste_metricas_de_vencedor_inferido(storage):

@@ -88,9 +88,7 @@ def analisar(area, data_inicial, data_final, uf, limite, storage, run_id=None, p
         }
         try:
             lote = downloader.listar_arquivos_candidatos(linha, PDF_DIR, chaves)
-            metricas_documentos["documentos_listados"] = (
-                len(lote.prioritarios) + len(lote.fallback) + lote.ignorados
-            )
+            metricas_documentos["documentos_listados"] = len(lote.prioritarios) + len(lote.fallback) + lote.ignorados
             metricas_documentos["documentos_ignorados"] = lote.ignorados
         except Exception as exc:
             _emit(progress, "erro", f"Falha ao listar arquivos de {controle}: {exc}.", indice, total_compras)
@@ -161,8 +159,9 @@ def analisar(area, data_inicial, data_final, uf, limite, storage, run_id=None, p
 
         # Limpeza efêmera do disco local em produção (quando S3 estiver ativo)
         from pncp_query.config import S3_BUCKET_NAME
+
         if S3_BUCKET_NAME:
-            for arquivo in (lote.prioritarios + lote.fallback):
+            for arquivo in lote.prioritarios + lote.fallback:
                 try:
                     arquivo.destino.unlink(missing_ok=True)
                 except Exception:
@@ -242,8 +241,7 @@ def _montar_auditoria(
     cnpjs_ata_unicos = {somente_digitos(cnpj) for cnpj in cnpjs_ata if somente_digitos(cnpj)}
     if evidencias is None:
         evidencias = [
-            {"cnpj": cnpj, "category": "participante", "signal": "compatibilidade"}
-            for cnpj in cnpjs_ata_unicos
+            {"cnpj": cnpj, "category": "participante", "signal": "compatibilidade"} for cnpj in cnpjs_ata_unicos
         ]
     evidencias_por_cnpj = {}
     for evidencia in evidencias:

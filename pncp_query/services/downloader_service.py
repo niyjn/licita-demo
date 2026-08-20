@@ -8,12 +8,12 @@ from urllib.parse import urljoin
 import requests
 
 from pncp_query.config import (
+    AWS_REGION,
     PALAVRAS_ARQUIVO,
     PALAVRAS_ARQUIVO_EXCLUIR,
     PALAVRAS_ARQUIVO_FORTE,
     PDF_MAX_BYTES,
     S3_BUCKET_NAME,
-    AWS_REGION,
 )
 from pncp_query.models import ArquivoPNCP, LoteArquivosPNCP
 from pncp_query.services.common import nome_seguro, somente_digitos
@@ -46,6 +46,7 @@ class DownloaderService:
         self.s3_client = None
         if S3_BUCKET_NAME:
             import boto3
+
             self.s3_client = boto3.client("s3", region_name=AWS_REGION)
 
     def listar_arquivos_relevantes(self, linha_licitacao, pdf_dir: Path, chaves_compra=None):
@@ -131,17 +132,13 @@ class DownloaderService:
             response = self._get(arquivo.url, timeout=120)
             conteudo = response.content
             if len(conteudo) > PDF_MAX_BYTES:
-                raise DocumentoInvalidoError(
-                    f"Documento excede o limite de {PDF_MAX_BYTES} bytes: {arquivo.titulo}"
-                )
+                raise DocumentoInvalidoError(f"Documento excede o limite de {PDF_MAX_BYTES} bytes: {arquivo.titulo}")
             content_type = str(getattr(response, "headers", {}).get("content-type", "")).lower()
             if content_type and "pdf" not in content_type and "octet-stream" not in content_type:
-                raise DocumentoInvalidoError(
-                    f"Documento não é PDF (Content-Type {content_type}): {arquivo.titulo}"
-                )
+                raise DocumentoInvalidoError(f"Documento não é PDF (Content-Type {content_type}): {arquivo.titulo}")
             if not conteudo.lstrip().startswith(b"%PDF"):
                 raise DocumentoInvalidoError(f"Documento sem assinatura PDF: {arquivo.titulo}")
-            
+
             digest = sha256(conteudo).hexdigest()
             s3_key = None
             if self.s3_client:
@@ -153,7 +150,7 @@ class DownloaderService:
                     ContentType="application/pdf",
                     Metadata={"source-url": arquivo.url, "sha256": digest},
                 )
-            
+
             with temp_path.open("wb") as destino:
                 destino.write(conteudo)
             temp_path.replace(arquivo.destino)
@@ -174,7 +171,16 @@ class DownloaderService:
         orgao_cnpj, ano, numero = compra or ("desconhecido", "desconhecido", "desconhecido")
         sequencial = arquivo.sequencial or "0"
         return "/".join(
-            ("runs", str(run_id or "adhoc"), "compras", str(orgao_cnpj), str(ano), str(numero), str(sequencial), arquivo.destino.name)
+            (
+                "runs",
+                str(run_id or "adhoc"),
+                "compras",
+                str(orgao_cnpj),
+                str(ano),
+                str(numero),
+                str(sequencial),
+                arquivo.destino.name,
+            )
         )
 
     def _listar_arquivos(self, orgao_cnpj, ano, numero):

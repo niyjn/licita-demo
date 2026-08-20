@@ -8,8 +8,8 @@ import json
 from contextlib import contextmanager
 from datetime import datetime
 
-from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor
+from psycopg2.pool import ThreadedConnectionPool
 
 from pncp_query.config import DB_POOL_MAX, DB_POOL_MIN, require_database_url
 
@@ -133,7 +133,14 @@ class Storage:
             return cursor.rowcount == 1
 
     def _finish_claimed(self, run_id, worker_id, status, message, error, duration_seconds):
-        updates = ["status = %s", "progress = 100", "message = %s", "error = %s", "heartbeat_at = now()", "finished_at = now()"]
+        updates = [
+            "status = %s",
+            "progress = 100",
+            "message = %s",
+            "error = %s",
+            "heartbeat_at = now()",
+            "finished_at = now()",
+        ]
         params = [status, message, error]
         if duration_seconds is not None:
             updates.append("duration_seconds = %s")
@@ -242,8 +249,14 @@ class Storage:
                        VALUES (%s, %s, %s, %s, %s, %s)
                        ON CONFLICT (contrato_id, cnpj) DO UPDATE SET nome = EXCLUDED.nome, papel = EXCLUDED.papel,
                        valor_homologado = EXCLUDED.valor_homologado, situacao_cadastral = EXCLUDED.situacao_cadastral""",
-                    (contract_id, participant["cnpj"], participant.get("nome", ""), participant["papel"],
-                     participant.get("valor_homologado"), participant.get("situacao_cadastral", "")),
+                    (
+                        contract_id,
+                        participant["cnpj"],
+                        participant.get("nome", ""),
+                        participant["papel"],
+                        participant.get("valor_homologado"),
+                        participant.get("situacao_cadastral", ""),
+                    ),
                 )
             return contract_id
 
@@ -256,9 +269,17 @@ class Storage:
                        ON CONFLICT (run_id, contrato_id, cnpj, disposition) DO UPDATE SET nome = EXCLUDED.nome,
                          source = EXCLUDED.source, reason = EXCLUDED.reason, origin_file = EXCLUDED.origin_file,
                          situacao_cadastral = EXCLUDED.situacao_cadastral""",
-                    (run_id, contrato_id, registro["cnpj"], registro.get("nome", ""), registro["source"],
-                     registro["disposition"], registro.get("reason", ""), registro.get("origin_file", ""),
-                     registro.get("situacao_cadastral", "")),
+                    (
+                        run_id,
+                        contrato_id,
+                        registro["cnpj"],
+                        registro.get("nome", ""),
+                        registro["source"],
+                        registro["disposition"],
+                        registro.get("reason", ""),
+                        registro.get("origin_file", ""),
+                        registro.get("situacao_cadastral", ""),
+                    ),
                 )
 
     def salvar_evidencias_cnpj(self, contrato_id, run_id, evidencias):
@@ -268,8 +289,17 @@ class Storage:
                 cursor.execute(
                     """INSERT INTO cnpj_evidencias (run_id, contrato_id, cnpj, origin_file, scan_pass, page_number, category, signal, excerpt)
                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                    (run_id, contrato_id, evidencia["cnpj"], evidencia["origin_file"], evidencia["scan_pass"],
-                     evidencia.get("page_number", 0), evidencia["category"], evidencia.get("signal", ""), evidencia.get("excerpt", "")),
+                    (
+                        run_id,
+                        contrato_id,
+                        evidencia["cnpj"],
+                        evidencia["origin_file"],
+                        evidencia["scan_pass"],
+                        evidencia.get("page_number", 0),
+                        evidencia["category"],
+                        evidencia.get("signal", ""),
+                        evidencia.get("excerpt", ""),
+                    ),
                 )
 
     def listar_evidencias_cnpj(self, run_id, contrato_id=None):
@@ -332,16 +362,36 @@ class Storage:
             cursor.execute("SELECT * FROM contratos" + where + " ORDER BY data_publicacao DESC", params)
             contracts = [_as_dict(row) for row in cursor.fetchall()]
             for contract in contracts:
-                cursor.execute("SELECT cnpj, nome, papel, valor_homologado, situacao_cadastral FROM participantes WHERE contrato_id = %s ORDER BY papel, nome", (contract["id"],))
+                cursor.execute(
+                    "SELECT cnpj, nome, papel, valor_homologado, situacao_cadastral FROM participantes WHERE contrato_id = %s ORDER BY papel, nome",
+                    (contract["id"],),
+                )
                 contract["participantes"] = [_as_dict(row) for row in cursor.fetchall()]
-                cursor.execute("SELECT cnpj, nome, source, disposition, reason, origin_file, situacao_cadastral FROM cnpjs_auditoria WHERE contrato_id = %s ORDER BY disposition, cnpj", (contract["id"],))
+                cursor.execute(
+                    "SELECT cnpj, nome, source, disposition, reason, origin_file, situacao_cadastral FROM cnpjs_auditoria WHERE contrato_id = %s ORDER BY disposition, cnpj",
+                    (contract["id"],),
+                )
                 contract["auditoria"] = [_as_dict(row) for row in cursor.fetchall()]
-                cursor.execute("SELECT cnpj, origin_file, scan_pass, page_number, category, signal, excerpt FROM cnpj_evidencias WHERE contrato_id = %s ORDER BY cnpj, page_number, id", (contract["id"],))
+                cursor.execute(
+                    "SELECT cnpj, origin_file, scan_pass, page_number, category, signal, excerpt FROM cnpj_evidencias WHERE contrato_id = %s ORDER BY cnpj, page_number, id",
+                    (contract["id"],),
+                )
                 contract["evidencias"] = [_as_dict(row) for row in cursor.fetchall()]
             return contracts
 
-    def salvar_documento(self, run_id, source_url, *, contrato_id=None, s3_bucket=None, s3_key=None, sha256=None,
-                         size_bytes=None, content_type=None, status="downloaded"):
+    def salvar_documento(
+        self,
+        run_id,
+        source_url,
+        *,
+        contrato_id=None,
+        s3_bucket=None,
+        s3_key=None,
+        sha256=None,
+        size_bytes=None,
+        content_type=None,
+        status="downloaded",
+    ):
         with self.connect() as cursor:
             cursor.execute(
                 """INSERT INTO documentos (run_id, contrato_id, source_url, s3_bucket, s3_key, sha256, size_bytes, content_type, status)
@@ -366,11 +416,22 @@ def _contrato_defaults(contrato):
 
 def _metricas_defaults():
     return {
-        "atas_lidas": 0, "atas_falhas": 0, "cnpjs_ata_unicos": 0, "removido_invalido": 0,
-        "removido_orgao": 0, "removido_vencedor": 0, "candidatos_inconclusivos": 0,
-        "perdedores_final": 0, "vencedores": 0, "vencedores_inferidos": 0, "resultado_final": 0,
-        "documentos_listados": 0, "documentos_prioritarios_lidos": 0, "documentos_fallback_lidos": 0,
-        "documentos_ignorados": 0, "documentos_duplicados": 0,
+        "atas_lidas": 0,
+        "atas_falhas": 0,
+        "cnpjs_ata_unicos": 0,
+        "removido_invalido": 0,
+        "removido_orgao": 0,
+        "removido_vencedor": 0,
+        "candidatos_inconclusivos": 0,
+        "perdedores_final": 0,
+        "vencedores": 0,
+        "vencedores_inferidos": 0,
+        "resultado_final": 0,
+        "documentos_listados": 0,
+        "documentos_prioritarios_lidos": 0,
+        "documentos_fallback_lidos": 0,
+        "documentos_ignorados": 0,
+        "documentos_duplicados": 0,
     }
 
 

@@ -1,4 +1,3 @@
-from pncp_query.services.storage import Storage
 
 
 def test_storage_salva_e_lista_contrato_com_participantes(storage):

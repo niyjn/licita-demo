@@ -1,6 +1,5 @@
 import analise
 from pncp_query.models import Licitacao
-from pncp_query.services.storage import Storage
 
 
 def test_analisar_descarta_contrato_direto_sem_abrir_downloads(monkeypatch, tmp_path, storage):

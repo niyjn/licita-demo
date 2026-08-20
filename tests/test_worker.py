@@ -14,8 +14,13 @@ from pncp_query.worker import main, run_once
 
 def params(**overrides):
     values = {
-        "modo": "fixo", "area": "TI", "termos": [], "data_inicial": "2026-01-01",
-        "data_final": "2026-01-31", "uf": "SP", "limite": 1,
+        "modo": "fixo",
+        "area": "TI",
+        "termos": [],
+        "data_inicial": "2026-01-01",
+        "data_final": "2026-01-31",
+        "uf": "SP",
+        "limite": 1,
     }
     values.update(overrides)
     return json.dumps(values)
@@ -79,6 +84,7 @@ def test_executor_sucesso_progresso_e_erro(storage):
 
     storage.criar_run("error", params())
     run = storage.claim_next_run("worker")
+
     def failing(*_args, **_kwargs):
         raise RuntimeError("boom")
 

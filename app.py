@@ -4,8 +4,8 @@ import unicodedata
 from math import ceil
 from uuid import uuid4
 
-from psycopg2 import IntegrityError
 from flask import Flask, jsonify, make_response, redirect, render_template, request, url_for
+from psycopg2 import IntegrityError
 
 from pncp_query.config import AREAS, DATABASE_URL, UFS, janela_padrao, require_database_url
 from pncp_query.services.storage import Storage
@@ -199,8 +199,7 @@ def create_app(config=None):
         todos = _listar_contratos(storage, uf, run_id=run["id"] if run else None, incluir_ocultos=True)
         contratos_descartados = [c for c in todos if c.get("status") == "descartado"]
         contratos = [
-            c for c in todos
-            if c.get("status") != "descartado" and (incluir_ocultos or c.get("status") == "final")
+            c for c in todos if c.get("status") != "descartado" and (incluir_ocultos or c.get("status") == "final")
         ]
         resumo = _resumo_run(storage, run) if run else _resumo_contratos(contratos)
         documentos = _documentos_extraidos(storage, run["id"]) if run else []
@@ -285,21 +284,17 @@ def create_app(config=None):
         run = storage.obter_run(run_id)
         if not run:
             return jsonify({"error": "run_not_found"}), 404
-        
+
         contratos = storage.listar_contratos(run_id=run_id, incluir_ocultos=True)
         auditorias = storage.listar_cnpjs_auditoria(run_id)
-        
+
         # Mapear portal_url para os contratos na exportação também
         for c in contratos:
             cnpj_limpo = re.sub(r"\D", "", c.get("orgao_cnpj") or "")
             c["portal_url"] = f"https://pncp.gov.br/app/editais/{cnpj_limpo}/{c.get('ano')}/{c.get('sequencial')}"
-            
-        dados = {
-            "run": run,
-            "contratos": contratos,
-            "auditorias": auditorias
-        }
-        
+
+        dados = {"run": run, "contratos": contratos, "auditorias": auditorias}
+
         resposta = make_response(json.dumps(dados, indent=2, ensure_ascii=False))
         resposta.headers["Content-Disposition"] = f"attachment; filename=analise-pncp-{run_id}.json"
         resposta.headers["Content-Type"] = "application/json"
@@ -324,7 +319,10 @@ def create_app(config=None):
                 cursor.execute("SELECT version_num FROM alembic_version LIMIT 1")
                 revision = cursor.fetchone()
             alembic_config = Config(str(app.root_path + "/alembic.ini"))
-            ready = revision is not None and revision["version_num"] == ScriptDirectory.from_config(alembic_config).get_current_head()
+            ready = (
+                revision is not None
+                and revision["version_num"] == ScriptDirectory.from_config(alembic_config).get_current_head()
+            )
         except Exception:
             ready = False
         if not ready:
@@ -413,19 +411,19 @@ def _contrato_view(contrato):
     contrato["perdedores"] = [p for p in contrato.get("participantes", []) if p.get("papel") != "adjudicatario"]
     contrato["status_label"] = STATUS_LABELS.get(contrato.get("status"), contrato.get("status", ""))
     contrato["motivo_status_label"] = _rotulo_motivo(contrato.get("motivo_status"))
-    
+
     # URL oficial do portal do PNCP para o edital
     cnpj_limpo = re.sub(r"\D", "", contrato.get("orgao_cnpj") or "")
-    contrato["portal_url"] = f"https://pncp.gov.br/app/editais/{cnpj_limpo}/{contrato.get('ano')}/{contrato.get('sequencial')}"
-    
+    contrato["portal_url"] = (
+        f"https://pncp.gov.br/app/editais/{cnpj_limpo}/{contrato.get('ano')}/{contrato.get('sequencial')}"
+    )
+
     # Rótulos para os registros de auditoria do contrato
     for item in contrato.get("auditoria", []):
         item["disposition_label"] = DISPOSITION_LABELS.get(item.get("disposition"), item.get("disposition", ""))
         item["reason_label"] = _rotulo_motivo(item.get("reason"))
         item["evidencias"] = [
-            evidencia
-            for evidencia in contrato.get("evidencias", [])
-            if evidencia.get("cnpj") == item.get("cnpj")
+            evidencia for evidencia in contrato.get("evidencias", []) if evidencia.get("cnpj") == item.get("cnpj")
         ]
 
     return contrato
@@ -517,9 +515,10 @@ def _rotulo_motivo(motivo):
 
 def _payload_analise():
     from datetime import datetime
+
     data = request.get_json(silent=True) or request.form
     inicio, fim = janela_padrao()
-    
+
     termos_brutos = data.get("termos")
     modo = (data.get("modo") or "").strip().lower()
     if not modo:
@@ -536,11 +535,11 @@ def _payload_analise():
         area = area or "TI"
         if area not in AREAS:
             raise ValueError(f"Área inválida: {area}. Opções: {list(AREAS.keys())}")
-        
+
     uf = (data.get("uf") or "SP").upper()
     if uf not in UFS:
         raise ValueError(f"UF inválido: {uf}")
-        
+
     try:
         limite = int(data.get("limite") or 10)
     except ValueError:
@@ -556,10 +555,10 @@ def _payload_analise():
         dt_fim = datetime.strptime(data_final, "%Y-%m-%d")
     except ValueError:
         raise ValueError("Formato de data inválido. Use YYYY-MM-DD.") from None
-        
+
     if dt_inicio > dt_fim:
         raise ValueError("A data inicial não pode ser posterior à data final.")
-        
+
     return {
         "modo": modo,
         "area": area,
