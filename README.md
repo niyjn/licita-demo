@@ -153,6 +153,15 @@ imutável (tag pelo SHA do commit e `APP_VERSION` igual ao SHA), tire um snapsho
 liveness. Inicie com um worker, valide uma run pequena, então escale. Logs de startup devem
 identificar a imagem/revision sem imprimir a DSN.
 
+### Privacidade por navegador
+
+Runs e perfis são privados por uma identidade anônima persistente no cookie `licita_anon`.
+O servidor armazena somente o hash do cookie; limpar os dados do navegador perde o acesso ao
+histórico. `CSRF_SECRET` deve ser um segredo longo, obrigatório em produção e idêntico em todas
+as tasks web ECS. CloudFront não pode cachear `/`, `/runs`, `/analises/*` ou `/perfis`: essas
+rotas precisam encaminhar o cookie e `Set-Cookie`; mantenha cache apenas em `/design-system/*`.
+Não é necessário sticky session no ALB.
+
 ## Testes e lint
 
 ```bash
