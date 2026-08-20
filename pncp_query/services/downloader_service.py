@@ -1,6 +1,7 @@
 import re
 import unicodedata
 from functools import lru_cache
+from hashlib import sha256
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -115,10 +116,15 @@ class DownloaderService:
 
         return orgao_cnpj, ano, numero
 
-    def baixar(self, arquivo: ArquivoPNCP):
+    def baixar(self, arquivo: ArquivoPNCP, *, run_id=None, compra=None):
+        """Download a PDF locally and, when enabled, upload it under a non-colliding S3 key.
+
+        The return value is document metadata for persistence by the analysis
+        transaction; ``None`` keeps compatibility with already-present files.
+        """
         arquivo.destino.parent.mkdir(parents=True, exist_ok=True)
         if arquivo.destino.exists():
-            return False
+            return None
         temp_path = arquivo.destino.with_name(f".{arquivo.destino.name}.tmp")
         temp_path.unlink(missing_ok=True)
         try:
@@ -136,14 +142,16 @@ class DownloaderService:
             if not conteudo.lstrip().startswith(b"%PDF"):
                 raise DocumentoInvalidoError(f"Documento sem assinatura PDF: {arquivo.titulo}")
             
-            # Se S3 client estiver ativo, faz upload para o S3
+            digest = sha256(conteudo).hexdigest()
+            s3_key = None
             if self.s3_client:
-                s3_key = arquivo.destino.name
+                s3_key = self._s3_key(arquivo, run_id, compra)
                 self.s3_client.put_object(
                     Bucket=S3_BUCKET_NAME,
                     Key=s3_key,
                     Body=conteudo,
-                    ContentType="application/pdf"
+                    ContentType="application/pdf",
+                    Metadata={"source-url": arquivo.url, "sha256": digest},
                 )
             
             with temp_path.open("wb") as destino:
@@ -152,7 +160,22 @@ class DownloaderService:
         except Exception:
             temp_path.unlink(missing_ok=True)
             raise
-        return True
+        return {
+            "source_url": arquivo.url,
+            "s3_bucket": S3_BUCKET_NAME if s3_key else None,
+            "s3_key": s3_key,
+            "sha256": digest,
+            "size_bytes": len(conteudo),
+            "content_type": content_type or "application/pdf",
+        }
+
+    @staticmethod
+    def _s3_key(arquivo, run_id, compra):
+        orgao_cnpj, ano, numero = compra or ("desconhecido", "desconhecido", "desconhecido")
+        sequencial = arquivo.sequencial or "0"
+        return "/".join(
+            ("runs", str(run_id or "adhoc"), "compras", str(orgao_cnpj), str(ano), str(numero), str(sequencial), arquivo.destino.name)
+        )
 
     def _listar_arquivos(self, orgao_cnpj, ano, numero):
         chave = (orgao_cnpj, ano, numero)

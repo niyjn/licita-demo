@@ -97,6 +97,7 @@ def analisar(area, data_inicial, data_final, uf, limite, storage, run_id=None, p
             lote = LoteArquivosPNCP()
 
         hashes_processados = set()
+        documentos_processados = []
         _processar_documentos(
             lote.prioritarios,
             "priority",
@@ -108,6 +109,9 @@ def analisar(area, data_inicial, data_final, uf, limite, storage, run_id=None, p
             progress,
             indice,
             total_compras,
+            run_id=run_id,
+            compra=chaves,
+            documentos_processados=documentos_processados,
         )
         if not _ha_perdedor_confirmavel(adjudicatarios, evidencias, linha.get("orgao_cnpj")):
             _processar_documentos(
@@ -121,6 +125,9 @@ def analisar(area, data_inicial, data_final, uf, limite, storage, run_id=None, p
                 progress,
                 indice,
                 total_compras,
+                run_id=run_id,
+                compra=chaves,
+                documentos_processados=documentos_processados,
             )
 
         cnpjs_origem = {}
@@ -146,6 +153,8 @@ def analisar(area, data_inicial, data_final, uf, limite, storage, run_id=None, p
             storage.salvar_cnpjs_auditoria(contrato_id, run_id, auditoria["registros"])
             storage.salvar_evidencias_cnpj(contrato_id, run_id, evidencias)
             storage.salvar_metricas_funil(contrato_id, run_id, auditoria["metricas"])
+            for documento in documentos_processados:
+                storage.salvar_documento(run_id, contrato_id=contrato_id, **documento)
 
         contratos_salvos += 1
         participantes_salvos += len(auditoria["participantes"])
@@ -154,11 +163,10 @@ def analisar(area, data_inicial, data_final, uf, limite, storage, run_id=None, p
         from pncp_query.config import S3_BUCKET_NAME
         if S3_BUCKET_NAME:
             for arquivo in (lote.prioritarios + lote.fallback):
-                if hasattr(arquivo, "destino") and isinstance(arquivo.destino, Path):
-                    try:
-                        arquivo.destino.unlink(missing_ok=True)
-                    except Exception:
-                        pass
+                try:
+                    arquivo.destino.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
     resumo = {"contratos": contratos_salvos, "participantes": participantes_salvos}
     if run_id:
@@ -450,10 +458,17 @@ def _processar_documentos(
     progress,
     indice,
     total_compras,
+    *,
+    run_id=None,
+    compra=None,
+    documentos_processados=None,
 ):
+    documentos_processados = documentos_processados if documentos_processados is not None else []
     for arquivo in arquivos:
         try:
-            downloader.baixar(arquivo)
+            documento = downloader.baixar(arquivo, run_id=run_id, compra=compra)
+            if documento:
+                documentos_processados.append(documento)
             if not arquivo.destino.exists():
                 metricas["atas_falhas"] += 1
                 continue
