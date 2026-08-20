@@ -35,7 +35,7 @@ def test_anonymous_browser_cookie_and_run_isolation(storage):
     assert second.get(f"/analises/{run_id}/cnpjs").status_code == 404
     assert second.get(f"/analises/{run_id}/exportar").status_code == 404
     assert second.post(f"/analises/{run_id}/excluir", headers={"X-CSRF-Token": _csrf(second)}).status_code == 404
-    assert b"run_id" not in second.get("/").data
+    assert run_id.encode() not in second.get("/").data
     assert run_id.encode() not in second.get("/runs").data
 
 

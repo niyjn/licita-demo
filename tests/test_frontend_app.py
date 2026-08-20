@@ -143,6 +143,7 @@ def test_post_analises_livre_normaliza_e_repassa_termos(storage):
     client = app.test_client()
 
     response = post(
+        client,
         "/analises",
         json={"modo": "livre", "termos": " firewall,\nFirewall, data center, x ", "uf": "SP", "limite": 1},
     )
@@ -159,6 +160,7 @@ def test_post_analises_livre_rejeita_vazio_e_mais_de_doze_termos(storage):
 
     vazio = post(client, "/analises", json={"modo": "livre", "termos": "x, ,"})
     excesso = post(
+        client,
         "/analises",
         json={"modo": "livre", "termos": ",".join(f"termo-{indice}" for indice in range(13))},
     )
