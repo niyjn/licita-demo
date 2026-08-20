@@ -53,18 +53,39 @@ class Storage:
             cursor.execute("SELECT 1 AS ok")
             return cursor.fetchone()["ok"] == 1
 
-    def criar_run(self, run_id, params_json="{}"):
+    def criar_run(self, run_id, params_json="{}", owner_id=None):
         with self.connect() as cursor:
             cursor.execute(
-                """INSERT INTO runs (id, status, progress, message, params_json, created_at)
-                   VALUES (%s, 'queued', 0, 'Análise na fila.', %s, now())""",
-                (run_id, params_json),
+                """INSERT INTO runs (id, status, progress, message, params_json, owner_id, created_at)
+                   VALUES (%s, 'queued', 0, 'Análise na fila.', %s, %s, now())""",
+                (run_id, params_json, owner_id),
             )
         return run_id
 
-    def criar_run_se_disponivel(self, run_id, params_json="{}"):
+    def criar_run_se_disponivel(self, run_id, params_json="{}", owner_id=None):
         """Queue a run. Multiple queued runs are valid and workers claim atomically."""
-        return self.criar_run(run_id, params_json)
+        return self.criar_run(run_id, params_json, owner_id)
+
+    def criar_identidade(self, owner_id, hashed_token, expires_at):
+        with self.connect() as cursor:
+            cursor.execute(
+                """INSERT INTO anonymous_identities (id, token_hash, expires_at)
+                   VALUES (%s, %s, %s)""",
+                (owner_id, hashed_token, expires_at),
+            )
+
+    def obter_identidade_por_hash(self, hashed_token):
+        with self.connect() as cursor:
+            cursor.execute("SELECT * FROM anonymous_identities WHERE token_hash = %s", (hashed_token,))
+            row = cursor.fetchone()
+            return _as_dict(row) if row else None
+
+    def tocar_identidade(self, owner_id, expires_at):
+        with self.connect() as cursor:
+            cursor.execute(
+                "UPDATE anonymous_identities SET last_seen_at = now(), expires_at = %s WHERE id = %s",
+                (expires_at, owner_id),
+            )
 
     def atualizar_run(self, run_id, status=None, progress=None, message=None, error=None):
         updates, params = [], []
@@ -176,9 +197,23 @@ class Storage:
             row = cursor.fetchone()
             return _as_dict(row) if row else None
 
+    def obter_run_do_owner(self, run_id, owner_id):
+        with self.connect() as cursor:
+            cursor.execute("SELECT * FROM runs WHERE id = %s AND owner_id = %s", (run_id, owner_id))
+            row = cursor.fetchone()
+            return _as_dict(row) if row else None
+
     def ultima_run(self):
         with self.connect() as cursor:
             cursor.execute("SELECT * FROM runs ORDER BY created_at DESC, id DESC LIMIT 1")
+            row = cursor.fetchone()
+            return _as_dict(row) if row else None
+
+    def ultima_run_do_owner(self, owner_id):
+        with self.connect() as cursor:
+            cursor.execute(
+                "SELECT * FROM runs WHERE owner_id = %s ORDER BY created_at DESC, id DESC LIMIT 1", (owner_id,)
+            )
             row = cursor.fetchone()
             return _as_dict(row) if row else None
 
@@ -206,9 +241,38 @@ class Storage:
             cursor.execute(query, params)
             return int(cursor.fetchone()["total"])
 
+    def listar_runs_do_owner(self, owner_id, limit=20, offset=0, status=None):
+        filters, params = ["r.owner_id = %s"], [owner_id]
+        if status:
+            filters.append("r.status = %s")
+            params.append(status)
+        params.extend((max(1, int(limit)), max(0, int(offset))))
+        with self.connect() as cursor:
+            cursor.execute(
+                f"""SELECT r.*, COUNT(c.id) AS contratos_count FROM runs r
+                    LEFT JOIN contratos c ON c.run_id = r.id WHERE {" AND ".join(filters)}
+                    GROUP BY r.id ORDER BY r.created_at DESC, r.id DESC LIMIT %s OFFSET %s""",
+                params,
+            )
+            return [_as_dict(row) for row in cursor.fetchall()]
+
+    def contar_runs_do_owner(self, owner_id, status=None):
+        query, params = "SELECT COUNT(*) AS total FROM runs WHERE owner_id = %s", [owner_id]
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+        with self.connect() as cursor:
+            cursor.execute(query, params)
+            return int(cursor.fetchone()["total"])
+
     def excluir_run(self, run_id):
         with self.connect() as cursor:
             cursor.execute("DELETE FROM runs WHERE id = %s", (run_id,))
+            return cursor.rowcount > 0
+
+    def excluir_run_do_owner(self, run_id, owner_id):
+        with self.connect() as cursor:
+            cursor.execute("DELETE FROM runs WHERE id = %s AND owner_id = %s", (run_id, owner_id))
             return cursor.rowcount > 0
 
     def salvar_perfil(self, nome, termos):
@@ -219,14 +283,35 @@ class Storage:
             )
             return cursor.fetchone()["id"]
 
+    def salvar_perfil_do_owner(self, owner_id, nome, termos):
+        with self.connect() as cursor:
+            cursor.execute(
+                "INSERT INTO perfis_busca (owner_id, nome, termos_json, created_at) VALUES (%s, %s, %s, now()) RETURNING id",
+                (owner_id, nome, json.dumps(termos, ensure_ascii=False)),
+            )
+            return cursor.fetchone()["id"]
+
     def listar_perfis(self):
         with self.connect() as cursor:
             cursor.execute("SELECT id, nome, termos_json, created_at FROM perfis_busca ORDER BY lower(nome), id")
             return [_as_dict(row) for row in cursor.fetchall()]
 
+    def listar_perfis_do_owner(self, owner_id):
+        with self.connect() as cursor:
+            cursor.execute(
+                "SELECT id, nome, termos_json, created_at FROM perfis_busca WHERE owner_id = %s ORDER BY lower(nome), id",
+                (owner_id,),
+            )
+            return [_as_dict(row) for row in cursor.fetchall()]
+
     def excluir_perfil(self, perfil_id):
         with self.connect() as cursor:
             cursor.execute("DELETE FROM perfis_busca WHERE id = %s", (perfil_id,))
+            return cursor.rowcount > 0
+
+    def excluir_perfil_do_owner(self, perfil_id, owner_id):
+        with self.connect() as cursor:
+            cursor.execute("DELETE FROM perfis_busca WHERE id = %s AND owner_id = %s", (perfil_id, owner_id))
             return cursor.rowcount > 0
 
     def salvar_contrato(self, contrato, participantes):
