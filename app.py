@@ -3,6 +3,7 @@ import hmac
 import json
 import logging
 import re
+import secrets
 import unicodedata
 from math import ceil
 from uuid import uuid4
@@ -114,10 +115,10 @@ def create_app(config=None):
     logger.info("startup component=web app_version=%s", app.config["APP_VERSION"])
 
     if not app.config.get("CSRF_SECRET"):
-        if app.config.get("TESTING") or app.config["APP_VERSION"] == "dev":
-            app.config["CSRF_SECRET"] = "development-only-csrf-secret"
+        if app.config.get("TESTING"):
+            app.config["CSRF_SECRET"] = secrets.token_urlsafe(32)
         else:
-            raise RuntimeError("CSRF_SECRET é obrigatório fora do desenvolvimento.")
+            raise RuntimeError("CSRF_SECRET é obrigatório para iniciar o serviço web.")
 
     def _csrf_token():
         return hmac.new(app.config["CSRF_SECRET"].encode(), str(g.owner_id).encode(), hashlib.sha256).hexdigest()

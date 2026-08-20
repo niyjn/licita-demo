@@ -78,7 +78,9 @@ class Storage:
         with self.connect() as cursor:
             cursor.execute("SELECT * FROM anonymous_identities WHERE token_hash = %s", (hashed_token,))
             row = cursor.fetchone()
-            return _as_dict(row) if row else None
+            # This private security boundary must retain TIMESTAMPTZ values for
+            # expiry comparisons; public run/profile APIs remain JSON-safe.
+            return dict(row) if row else None
 
     def tocar_identidade(self, owner_id, expires_at):
         with self.connect() as cursor:
