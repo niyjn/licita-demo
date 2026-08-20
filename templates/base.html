@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='components.css') }}">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <script>
+      window.csrfToken = {{ csrf_token|tojson }};
       // Aplica o tema imediatamente antes de renderizar para evitar flash de luz
       const savedTheme = localStorage.getItem('theme');
       const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;

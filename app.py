@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 import logging
 import re
@@ -5,10 +7,21 @@ import unicodedata
 from math import ceil
 from uuid import uuid4
 
-from flask import Flask, jsonify, make_response, redirect, render_template, request, url_for
+from flask import Flask, g, jsonify, make_response, redirect, render_template, request, url_for
 from psycopg2 import IntegrityError
 
-from pncp_query.config import APP_VERSION, AREAS, DATABASE_URL, UFS, janela_padrao, require_database_url
+from pncp_query.config import (
+    ANON_COOKIE_DAYS,
+    ANON_COOKIE_SECURE,
+    APP_VERSION,
+    AREAS,
+    CSRF_SECRET,
+    DATABASE_URL,
+    UFS,
+    janela_padrao,
+    require_database_url,
+)
+from pncp_query.services.anonymous_identity import COOKIE_NAME, resolve_identity
 from pncp_query.services.storage import Storage
 
 AREA_LABELS = {
@@ -84,7 +97,13 @@ def create_app(config=None):
         static_url_path="/design-system",
         template_folder="templates",
     )
-    app.config.update(DATABASE_URL=DATABASE_URL, APP_VERSION=APP_VERSION)
+    app.config.update(
+        DATABASE_URL=DATABASE_URL,
+        APP_VERSION=APP_VERSION,
+        ANON_COOKIE_DAYS=ANON_COOKIE_DAYS,
+        ANON_COOKIE_SECURE=ANON_COOKIE_SECURE,
+        CSRF_SECRET=CSRF_SECRET,
+    )
     if config:
         app.config.update(config)
     storage = app.config.pop("STORAGE", None) or Storage(app.config.get("DATABASE_URL") or require_database_url())
@@ -93,6 +112,48 @@ def create_app(config=None):
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
     logger.info("startup component=web app_version=%s", app.config["APP_VERSION"])
+
+    if not app.config.get("CSRF_SECRET"):
+        if app.config.get("TESTING") or app.config["APP_VERSION"] == "dev":
+            app.config["CSRF_SECRET"] = "development-only-csrf-secret"
+        else:
+            raise RuntimeError("CSRF_SECRET é obrigatório fora do desenvolvimento.")
+
+    def _csrf_token():
+        return hmac.new(app.config["CSRF_SECRET"].encode(), str(g.owner_id).encode(), hashlib.sha256).hexdigest()
+
+    def _require_csrf():
+        supplied = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token")
+        if not supplied or not hmac.compare_digest(supplied, _csrf_token()):
+            return jsonify({"error": "csrf_invalid", "message": "Token CSRF inválido."}), 400
+
+    @app.before_request
+    def anonymous_identity():
+        if request.endpoint in {"healthz", "readyz", "static", "favicon"}:
+            return None
+        owner_id, cookie, is_new = resolve_identity(
+            storage, request.cookies.get(COOKIE_NAME), app.config["ANON_COOKIE_DAYS"]
+        )
+        g.owner_id, g.anon_cookie, g.anon_cookie_new = owner_id, cookie, is_new
+        return None
+
+    @app.after_request
+    def persist_anonymous_cookie(response):
+        if getattr(g, "anon_cookie_new", False):
+            response.set_cookie(
+                COOKIE_NAME,
+                g.anon_cookie,
+                max_age=app.config["ANON_COOKIE_DAYS"] * 86400,
+                httponly=True,
+                secure=app.config["ANON_COOKIE_SECURE"],
+                samesite="Lax",
+                path="/",
+            )
+        return response
+
+    @app.context_processor
+    def inject_csrf_token():
+        return {"csrf_token": _csrf_token() if getattr(g, "owner_id", None) else ""}
 
     @app.template_filter("highlight_signal")
     def highlight_signal_filter(excerpt, signal):
@@ -117,7 +178,7 @@ def create_app(config=None):
 
     @app.get("/")
     def index():
-        run = storage.ultima_run()
+        run = storage.ultima_run_do_owner(g.owner_id)
         if run:
             return _render_run(run["id"])
         return _render_dashboard(run=None)
@@ -137,10 +198,11 @@ def create_app(config=None):
             return jsonify({"error": "invalid_status"}), 400
 
         por_pagina = 20
-        total = storage.contar_runs(status=status)
+        total = storage.contar_runs_do_owner(g.owner_id, status=status)
         total_paginas = max(1, ceil(total / por_pagina))
         pagina = min(pagina, total_paginas)
-        runs = storage.listar_runs(
+        runs = storage.listar_runs_do_owner(
+            g.owner_id,
             limit=por_pagina,
             offset=(pagina - 1) * por_pagina,
             status=status,
@@ -161,16 +223,21 @@ def create_app(config=None):
 
     @app.post("/analises/<run_id>/excluir")
     def excluir_analise(run_id):
-        run = storage.obter_run(run_id)
+        csrf_error = _require_csrf()
+        if csrf_error:
+            return csrf_error
+        run = storage.obter_run_do_owner(run_id, g.owner_id)
         if not run:
             return jsonify({"error": "run_not_found"}), 404
         if run["status"] in {"queued", "running"}:
             return jsonify({"error": "run_active", "message": "Uma análise ativa não pode ser excluída."}), 409
-        storage.excluir_run(run_id)
+        storage.excluir_run_do_owner(run_id, g.owner_id)
         return redirect(url_for("listar_runs"))
 
     @app.get("/analises/<run_id>/cnpjs")
     def listar_cnpjs(run_id):
+        if not storage.obter_run_do_owner(run_id, g.owner_id):
+            return jsonify({"error": "run_not_found"}), 404
         disposition = request.args.get("disposition")
         registros = storage.listar_cnpjs_auditoria(run_id, disposition=disposition)
         evidencias = {}
@@ -181,7 +248,7 @@ def create_app(config=None):
         return jsonify({"run_id": run_id, "disposition": disposition, "cnpjs": registros})
 
     def _render_run(run_id):
-        run = storage.obter_run(run_id)
+        run = storage.obter_run_do_owner(run_id, g.owner_id)
         if not run:
             return jsonify({"error": "run_not_found"}), 404
         return _render_dashboard(run)
@@ -228,25 +295,34 @@ def create_app(config=None):
 
     @app.post("/analises")
     def criar_analise():
+        csrf_error = _require_csrf()
+        if csrf_error:
+            return csrf_error
         try:
             payload = _payload_analise()
         except ValueError as e:
             return jsonify({"error": "invalid_input", "message": str(e)}), 400
         run_id = uuid4().hex
         storage.limpar_runs_travadas(timeout_segundos=3600)
-        storage.criar_run_se_disponivel(run_id, params_json=_params_json(payload))
+        try:
+            storage.criar_run_se_disponivel(run_id, params_json=_params_json(payload), owner_id=g.owner_id)
+        except IntegrityError:
+            return jsonify({"error": "run_active", "message": "Você já possui uma análise ativa."}), 409
         return jsonify({"run_id": run_id}), 202
 
     @app.get("/perfis")
     def listar_perfis():
         perfis = []
-        for perfil in storage.listar_perfis():
+        for perfil in storage.listar_perfis_do_owner(g.owner_id):
             perfil["termos"] = _json_lista(perfil.pop("termos_json", "[]"))
             perfis.append(perfil)
         return jsonify({"perfis": perfis})
 
     @app.post("/perfis")
     def criar_perfil():
+        csrf_error = _require_csrf()
+        if csrf_error:
+            return csrf_error
         data = request.get_json(silent=True) or request.form
         nome = " ".join((data.get("nome") or "").split())
         if not nome or len(nome) > 80:
@@ -256,20 +332,23 @@ def create_app(config=None):
         except ValueError as exc:
             return jsonify({"error": "invalid_terms", "message": str(exc)}), 400
         try:
-            perfil_id = storage.salvar_perfil(nome, termos)
+            perfil_id = storage.salvar_perfil_do_owner(g.owner_id, nome, termos)
         except IntegrityError:
             return jsonify({"error": "duplicate_name", "message": "Já existe um modelo com esse nome."}), 409
         return jsonify({"id": perfil_id, "nome": nome, "termos": termos}), 201
 
     @app.delete("/perfis/<int:perfil_id>")
     def excluir_perfil(perfil_id):
-        if not storage.excluir_perfil(perfil_id):
+        csrf_error = _require_csrf()
+        if csrf_error:
+            return csrf_error
+        if not storage.excluir_perfil_do_owner(perfil_id, g.owner_id):
             return jsonify({"error": "profile_not_found"}), 404
         return "", 204
 
     @app.get("/analises/<run_id>/status")
     def status_analise(run_id):
-        run = storage.obter_run(run_id)
+        run = storage.obter_run_do_owner(run_id, g.owner_id)
         if not run:
             return jsonify({"error": "run_not_found"}), 404
         return jsonify(
@@ -286,7 +365,7 @@ def create_app(config=None):
 
     @app.get("/analises/<run_id>/exportar")
     def exportar_analise(run_id):
-        run = storage.obter_run(run_id)
+        run = storage.obter_run_do_owner(run_id, g.owner_id)
         if not run:
             return jsonify({"error": "run_not_found"}), 404
 
