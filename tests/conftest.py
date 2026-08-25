@@ -9,6 +9,10 @@ import os
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
+# Configure environment-dependent application settings before importing any
+# project module. `pncp_query.config` reads these values at import time.
+os.environ.setdefault("CSRF_SECRET", "pytest-only-csrf-secret")
+
 import psycopg2
 import pytest
 from alembic import command

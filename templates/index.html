@@ -59,6 +59,7 @@
         </div>
       </div>
       <form id="analysis-form" method="post" action="/analises" class="filters">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="modo" value="{{ run_params.modo|default('fixo') if run_params else 'fixo' }}">
         <div class="field">
           <span>Modo de busca</span>
@@ -632,7 +633,7 @@
       if (!nome) return;
       const response = await fetch("/perfis", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": window.csrfToken },
         body: JSON.stringify({ nome, termos: termsInput.value }),
       });
       const payload = await response.json();
@@ -646,7 +647,7 @@
 
     deleteProfileBtn.addEventListener("click", async () => {
       if (!profileSelect.value || !window.confirm("Excluir este modelo?")) return;
-      const response = await fetch(`/perfis/${profileSelect.value}`, { method: "DELETE" });
+      const response = await fetch(`/perfis/${profileSelect.value}`, { method: "DELETE", headers: { "X-CSRF-Token": window.csrfToken } });
       if (!response.ok) {
         statusEl.textContent = "Não foi possível excluir o modelo.";
         return;
@@ -721,7 +722,7 @@
       if (timerInterval) clearInterval(timerInterval);
       activeDurationSeconds = 0;
 
-      const response = await fetch("/analises", { method: "POST", body: formData });
+      const response = await fetch("/analises", { method: "POST", headers: { "X-CSRF-Token": window.csrfToken }, body: formData });
       const payload = await response.json();
 
       if (!response.ok) {

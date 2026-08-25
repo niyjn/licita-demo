@@ -22,6 +22,7 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      CSRF_SECRET: pytest-only-csrf-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
