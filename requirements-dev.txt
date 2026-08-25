@@ -1,2 +1,3 @@
 pytest
 ruff
+mkdocs-material

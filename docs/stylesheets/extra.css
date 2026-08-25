@@ -1,0 +1,22 @@
+:root {
+  --md-primary-fg-color: #4f8f78;
+  --md-primary-fg-color--light: #87bba2;
+  --md-primary-fg-color--dark: #315c4e;
+  --md-accent-fg-color: #4f8f78;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0a1108;
+  --md-default-bg-color--light: #101b12;
+  --md-code-bg-color: #101b12;
+}
+
+.md-button {
+  border-radius: 0;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  letter-spacing: -0.02em;
+}

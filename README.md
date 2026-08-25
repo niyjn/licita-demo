@@ -81,6 +81,8 @@ python -m pncp_query.worker
 O processo web apenas cria runs em estado `queued`. Sem o worker, a interface continua
 acessível, mas as análises permanecem na fila.
 
+Documentação completa: [docs.licitafinder.com.br](https://docs.licitafinder.com.br).
+
 Para OCR de PDFs escaneados, instale o [Tesseract](https://github.com/tesseract-ocr/tesseract) e o [Poppler](https://poppler.freedesktop.org/).
 
 ### Docker
