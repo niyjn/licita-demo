@@ -9,6 +9,10 @@ import os
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
+# Configure environment-dependent application settings before importing any
+# project module. `pncp_query.config` reads these values at import time.
+os.environ.setdefault("CSRF_SECRET", "pytest-only-csrf-secret")
+
 import psycopg2
 import pytest
 from alembic import command
@@ -27,7 +31,6 @@ def pytest_configure():
     if not admin_url:
         pytest.exit("TEST_DATABASE_URL é obrigatória; inicie `docker compose up -d postgres` e configure-a.")
     os.environ.setdefault("DATABASE_URL", admin_url)
-    os.environ.setdefault("CSRF_SECRET", "pytest-only-csrf-secret")
 
 
 @pytest.fixture
