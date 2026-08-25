@@ -16,7 +16,7 @@ def wait_status(client, run_id, expected):
 
 
 def csrf(client):
-    page = client.get("/").get_data(as_text=True)
+    page = client.get("/app").get_data(as_text=True)
     return re.search(r'window.csrfToken = "([^"]+)"', page).group(1)
 
 
@@ -36,10 +36,22 @@ def delete(client, path, **kwargs):
     return client.delete(path, headers=headers, **kwargs)
 
 
-def test_index_renderiza_frontend_com_design_system(storage):
+def test_welcome_renderiza_introducao(storage):
     app = create_app({"TESTING": True, "STORAGE": storage})
 
     response = app.test_client().get("/")
+
+    assert response.status_code == 200
+    assert b"welcome-section" in response.data
+    assert "Começar uma análise".encode() in response.data
+    assert b"licitafinder.welcome.dismissed.v1" in response.data
+    assert b"analysis-layout" not in response.data
+
+
+def test_index_renderiza_frontend_com_design_system(storage):
+    app = create_app({"TESTING": True, "STORAGE": storage})
+
+    response = app.test_client().get("/app")
 
     assert response.status_code == 200
     assert "Análise PNCP".encode() in response.data
@@ -48,6 +60,7 @@ def test_index_renderiza_frontend_com_design_system(storage):
     assert "Saúde".encode() in response.data
     assert "Em execução".encode() in response.data
     assert b"analysis-layout" in response.data
+    assert b"welcome-section" not in response.data
 
 
 def test_healthz_retorna_ok(storage):
@@ -294,7 +307,7 @@ def test_index_renderiza_ultima_run_com_metricas_e_oculta_vazios(storage):
             }
         ],
     )
-    response = client.get("/")
+    response = client.get("/app")
 
     assert response.status_code == 200
     assert "Funil reconciliável".encode() in response.data

@@ -132,7 +132,7 @@ def create_app(config=None):
 
     @app.before_request
     def anonymous_identity():
-        if request.endpoint in {"healthz", "readyz", "static", "favicon"}:
+        if request.endpoint in {"healthz", "readyz", "static", "favicon", "welcome"}:
             return None
         owner_id, cookie, should_set_cookie = resolve_identity(
             storage,
@@ -183,6 +183,10 @@ def create_app(config=None):
         )
 
     @app.get("/")
+    def welcome():
+        return render_template("welcome.html")
+
+    @app.get("/app")
     def index():
         run = storage.ultima_run_do_owner(g.owner_id)
         if run:

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}LicitaFinder — Introdução{% endblock %}
+
+{% block content %}
+  <section class="welcome-section welcome-page" id="welcome" aria-labelledby="welcome-title">
+    <div class="welcome-hero">
+      <div class="welcome-copy">
+        <span class="eyebrow">Introdução rápida</span>
+        <h1 id="welcome-title">Encontre sinais em licitações públicas.</h1>
+        <p class="welcome-lead">
+          O LicitaFinder percorre dados do PNCP e organiza vencedores, participantes e resultados
+          para você investigar oportunidades com mais contexto.
+        </p>
+        <div class="welcome-actions">
+          <a class="btn btn-primary" id="welcome-start" href="{{ url_for('index') }}">Começar uma análise</a>
+          <a class="btn btn-secondary" href="#how-it-works">Como funciona</a>
+        </div>
+        <p class="welcome-note">Sem cadastro. Sua atividade fica associada apenas a este navegador.</p>
+      </div>
+      <div class="welcome-signal" aria-hidden="true">
+        <span class="welcome-signal-label">PNCP / ANÁLISE</span>
+        <strong>dados públicos</strong>
+        <span class="welcome-signal-line"></span>
+        <span>contratos → participantes → sinais</span>
+      </div>
+    </div>
+
+    <div class="welcome-grid" id="how-it-works">
+      <article class="welcome-card">
+        <span class="welcome-card-number">01</span>
+        <h2>Escolha o recorte</h2>
+        <p>Selecione uma área ou faça uma busca livre por termos, definindo estado, período e limite.</p>
+      </article>
+      <article class="welcome-card">
+        <span class="welcome-card-number">02</span>
+        <h2>Deixe o worker trabalhar</h2>
+        <p>A análise roda em segundo plano. Você pode acompanhar o progresso e voltar ao histórico depois.</p>
+      </article>
+      <article class="welcome-card">
+        <span class="welcome-card-number">03</span>
+        <h2>Leia o funil</h2>
+        <p>Contratos, CNPJs e evidências ficam organizados para separar resultados confirmados de dados inconclusivos.</p>
+      </article>
+    </div>
+
+    <div class="welcome-disclaimer">
+      <strong>Importante:</strong> os resultados dependem dos dados publicados pelo PNCP e por fontes complementares.
+      Use a análise como ponto de partida para sua investigação, não como prova isolada.
+    </div>
+  </section>
+
+  <script>
+    const WELCOME_STORAGE_KEY = "licitafinder.welcome.dismissed.v1";
+    const params = new URLSearchParams(window.location.search);
+    const explicitIntro = params.get("intro") === "1";
+
+    if (explicitIntro) {
+      try {
+        localStorage.removeItem(WELCOME_STORAGE_KEY);
+      } catch (_error) {
+        // A introdução continua acessível nesta sessão.
+      }
+    } else {
+      try {
+        if (localStorage.getItem(WELCOME_STORAGE_KEY) === "true") {
+          window.location.replace("{{ url_for('index') }}");
+        }
+      } catch (_error) {
+        // Sem storage, a introdução permanece como porta de entrada.
+      }
+    }
+
+    document.getElementById("welcome-start").addEventListener("click", () => {
+      try {
+        localStorage.setItem(WELCOME_STORAGE_KEY, "true");
+      } catch (_error) {
+        // O painel ainda pode ser acessado mesmo sem persistência local.
+      }
+    });
+  </script>
+{% endblock %}

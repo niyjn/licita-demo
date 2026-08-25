@@ -14,7 +14,12 @@
     <script>
       window.csrfToken = {{ csrf_token|tojson }};
       // Aplica o tema imediatamente antes de renderizar para evitar flash de luz
-      const savedTheme = localStorage.getItem('theme');
+      let savedTheme = null;
+      try {
+        savedTheme = localStorage.getItem('theme');
+      } catch (_error) {
+        // O tema padrão continua funcionando sem localStorage.
+      }
       const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       const theme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
       document.documentElement.setAttribute('data-theme', theme);
@@ -31,6 +36,11 @@
           </div>
         </div>
         <div class="topbar-actions" style="padding-bottom: 14px;">
+          {% if request.endpoint == 'index' %}
+            <a class="btn btn-secondary" href="{{ url_for('welcome', intro='1') }}">Introdução</a>
+          {% elif request.endpoint == 'welcome' %}
+            <a class="btn btn-primary" href="{{ url_for('index') }}">Painel</a>
+          {% endif %}
           <a class="btn btn-secondary" href="{{ url_for('listar_runs') }}">Histórico</a>
           <button id="theme-toggle" class="btn btn-secondary">
             <span id="theme-toggle-text">Modo Escuro</span>
@@ -60,7 +70,11 @@
         const activeTheme = document.documentElement.getAttribute('data-theme');
         const newTheme = activeTheme === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', newTheme);
-        localStorage.setItem('theme', newTheme);
+        try {
+          localStorage.setItem('theme', newTheme);
+        } catch (_error) {
+          // Tema continua aplicado nesta sessão mesmo sem persistência.
+        }
       });
 
       // Converte todos os elementos com a classe local-time do UTC para o horário local do navegador

@@ -7,7 +7,7 @@ from pncp_query.worker import run_once
 
 
 def _csrf(client):
-    response = client.get("/")
+    response = client.get("/app")
     return re.search(r'window.csrfToken = "([^"]+)"', response.get_data(as_text=True)).group(1)
 
 
@@ -35,7 +35,7 @@ def test_anonymous_browser_cookie_and_run_isolation(storage):
     assert second.get(f"/analises/{run_id}/cnpjs").status_code == 404
     assert second.get(f"/analises/{run_id}/exportar").status_code == 404
     assert second.post(f"/analises/{run_id}/excluir", headers={"X-CSRF-Token": _csrf(second)}).status_code == 404
-    assert run_id.encode() not in second.get("/").data
+    assert run_id.encode() not in second.get("/app").data
     assert run_id.encode() not in second.get("/runs").data
 
 
@@ -83,7 +83,7 @@ def test_valid_identity_refreshes_only_after_the_window(storage):
     _csrf(client)
     before = _owner(storage, client)
 
-    immediate = client.get("/")
+    immediate = client.get("/app")
     unchanged = _owner(storage, client)
     assert "licita_anon" not in immediate.headers.get("Set-Cookie", "")
     assert unchanged["last_seen_at"] == before["last_seen_at"]
@@ -94,7 +94,7 @@ def test_valid_identity_refreshes_only_after_the_window(storage):
             "UPDATE anonymous_identities SET last_seen_at = now() - interval '25 hours' WHERE id = %s",
             (before["id"],),
         )
-    renewed = client.get("/")
+    renewed = client.get("/app")
     after = _owner(storage, client)
     assert "licita_anon" in renewed.headers["Set-Cookie"]
     assert after["last_seen_at"] > before["last_seen_at"]
@@ -103,7 +103,7 @@ def test_valid_identity_refreshes_only_after_the_window(storage):
 
 def test_production_cookie_is_secure(storage):
     app = create_app({"STORAGE": storage, "CSRF_SECRET": "test-secret", "ANON_COOKIE_SECURE": True})
-    response = app.test_client().get("/")
+    response = app.test_client().get("/app")
     assert "; Secure" in response.headers["Set-Cookie"]
 
 

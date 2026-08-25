@@ -93,6 +93,11 @@ docker compose up --build
 # http://localhost:8000
 ```
 
+Ao abrir o endereço pela primeira vez, `/` apresenta uma introdução curta do LicitaFinder.
+O botão de início leva ao painel em `/app`; depois disso, a preferência é lembrada no
+navegador e novas visitas podem abrir o painel diretamente. O link “Introdução” no cabeçalho
+permite voltar à apresentação a qualquer momento.
+
 O volume persistente pertence somente ao PostgreSQL. Cada web/worker mantém seu próprio
 cache local de PDFs, efêmero e não compartilhado; com `S3_BUCKET_NAME` configurado, cada
 documento é gravado com key por run/compra e sua URL original, hash e key são rastreados na
