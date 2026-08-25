@@ -41,6 +41,7 @@
           {% elif request.endpoint == 'welcome' %}
             <a class="btn btn-primary" href="{{ url_for('index') }}">Painel</a>
           {% endif %}
+          <a class="btn btn-secondary" href="{{ config['DOCS_URL'] }}" target="_blank" rel="noopener noreferrer">Docs</a>
           <a class="btn btn-secondary" href="{{ url_for('listar_runs') }}">Histórico</a>
           <button id="theme-toggle" class="btn btn-secondary">
             <span id="theme-toggle-text">Modo Escuro</span>

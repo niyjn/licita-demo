@@ -19,6 +19,7 @@ from pncp_query.config import (
     AREAS,
     CSRF_SECRET,
     DATABASE_URL,
+    DOCS_URL,
     UFS,
     janela_padrao,
     require_database_url,
@@ -102,6 +103,7 @@ def create_app(config=None):
     app.config.update(
         DATABASE_URL=DATABASE_URL,
         APP_VERSION=APP_VERSION,
+        DOCS_URL=DOCS_URL,
         ANON_COOKIE_DAYS=ANON_COOKIE_DAYS,
         ANON_COOKIE_REFRESH_HOURS=ANON_COOKIE_REFRESH_HOURS,
         ANON_COOKIE_SECURE=ANON_COOKIE_SECURE,

@@ -53,6 +53,7 @@ DATABASE_URL = normalize_database_url(os.getenv("DATABASE_URL"))
 DB_POOL_MIN = _env_int("DB_POOL_MIN", 1)
 DB_POOL_MAX = _env_int("DB_POOL_MAX", 5)
 APP_VERSION = os.getenv("APP_VERSION", "dev").strip() or "dev"
+DOCS_URL = os.getenv("DOCS_URL", "https://docs.licitafinder.com.br").strip()
 ANON_COOKIE_DAYS = _env_int("ANON_COOKIE_DAYS", 180)
 ANON_COOKIE_REFRESH_HOURS = _env_int("ANON_COOKIE_REFRESH_HOURS", 24)
 ANON_COOKIE_SECURE = os.getenv("ANON_COOKIE_SECURE", "true").strip().lower() not in {"0", "false", "no"}
